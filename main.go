@@ -3,14 +3,14 @@ package main
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"github.com/huacnlee/flora-kit/flora"
 	"io"
 	"log"
 	"math/rand"
 	"net"
 	"strconv"
 	"time"
-
-	"github.com/huacnlee/flora-kit/flora"
 
 	ss "github.com/shadowsocks/shadowsocks-go/shadowsocks"
 )
@@ -149,104 +149,19 @@ func getRequest(conn net.Conn) (rawaddr []byte, host string, err error) {
 	return
 }
 
-type ServerCipher struct {
-	server string
-	cipher *ss.Cipher
-}
-
-var servers struct {
-	srvCipher []*ServerCipher
-	failCnt   []int // failed connection count
-}
-
-func parseServerConfig(config *ss.Config) {
-	hasPort := func(s string) bool {
-		_, port, err := net.SplitHostPort(s)
-		if err != nil {
-			return false
-		}
-		return port != ""
-	}
-
-	if len(config.ServerPassword) == 0 {
-		method := config.Method
-		if config.Auth {
-			method += "-auth"
-		}
-		// only one encryption table
-		cipher, err := ss.NewCipher(method, config.Password)
-		if err != nil {
-			log.Fatal("Failed generating ciphers:", err)
-		}
-		srvPort := strconv.Itoa(config.ServerPort)
-		srvArr := config.GetServerArray()
-		n := len(srvArr)
-		servers.srvCipher = make([]*ServerCipher, n)
-
-		for i, s := range srvArr {
-			if hasPort(s) {
-				log.Println("ignore server_port option for server", s)
-				servers.srvCipher[i] = &ServerCipher{s, cipher}
-			} else {
-				servers.srvCipher[i] = &ServerCipher{net.JoinHostPort(s, srvPort), cipher}
-			}
-		}
-	} else {
-		// multiple servers
-		n := len(config.ServerPassword)
-		servers.srvCipher = make([]*ServerCipher, n)
-
-		cipherCache := make(map[string]*ss.Cipher)
-		i := 0
-		for _, serverInfo := range config.ServerPassword {
-			if len(serverInfo) < 2 || len(serverInfo) > 3 {
-				log.Fatalf("server %v syntax error\n", serverInfo)
-			}
-			server := serverInfo[0]
-			passwd := serverInfo[1]
-			encmethod := ""
-			if len(serverInfo) == 3 {
-				encmethod = serverInfo[2]
-			}
-			if !hasPort(server) {
-				log.Fatalf("no port for server %s\n", server)
-			}
-			// Using "|" as delimiter is safe here, since no encryption
-			// method contains it in the name.
-			cacheKey := encmethod + "|" + passwd
-			cipher, ok := cipherCache[cacheKey]
-			if !ok {
-				var err error
-				cipher, err = ss.NewCipher(encmethod, passwd)
-				if err != nil {
-					log.Fatal("Failed generating ciphers:", err)
-				}
-				cipherCache[cacheKey] = cipher
-			}
-			servers.srvCipher[i] = &ServerCipher{server, cipher}
-			i++
-		}
-	}
-	servers.failCnt = make([]int, len(servers.srvCipher))
-	for _, se := range servers.srvCipher {
-		log.Println("available remote server", se.server)
-	}
-	return
-}
-
 func connectToServer(serverId int, rawaddr []byte, addr string) (remote *ss.Conn, err error) {
-	se := servers.srvCipher[serverId]
-	remote, err = ss.DialWithRawAddr(rawaddr, se.server, se.cipher.Copy())
+	se := flora.ProxyServers.SrvCipher[serverId]
+	remote, err = ss.DialWithRawAddr(rawaddr, se.Server, se.Cipher.Copy())
 	if err != nil {
 		log.Println("error connecting to shadowsocks server:", err)
 		const maxFailCnt = 30
-		if servers.failCnt[serverId] < maxFailCnt {
-			servers.failCnt[serverId]++
+		if flora.ProxyServers.FailCnt[serverId] < maxFailCnt {
+			flora.ProxyServers.FailCnt[serverId]++
 		}
 		return nil, err
 	}
-	debug.Printf("connected to %s via %s\n", addr, se.server)
-	servers.failCnt[serverId] = 0
+	debug.Printf("connected to %s via %s\n", addr, se.Server)
+	flora.ProxyServers.FailCnt[serverId] = 0
 	return
 }
 
@@ -256,11 +171,11 @@ func connectToServer(serverId int, rawaddr []byte, addr string) (remote *ss.Conn
 // servers.
 func createServerConn(rawaddr []byte, addr string) (remote *ss.Conn, err error) {
 	const baseFailCnt = 20
-	n := len(servers.srvCipher)
+	n := len(flora.ProxyServers.SrvCipher)
 	skipped := make([]int, 0)
 	for i := 0; i < n; i++ {
 		// skip failed server, but try it with some probability
-		if servers.failCnt[i] > 0 && rand.Intn(servers.failCnt[i]+baseFailCnt) != 0 {
+		if flora.ProxyServers.FailCnt[i] > 0 && rand.Intn(flora.ProxyServers.FailCnt[i]+baseFailCnt) != 0 {
 			skipped = append(skipped, i)
 			continue
 		}
@@ -311,7 +226,7 @@ func handleConnection(conn net.Conn) {
 
 	remote, err := createServerConn(rawaddr, addr)
 	if err != nil {
-		if len(servers.srvCipher) > 1 {
+		if len(flora.ProxyServers.SrvCipher) > 1 {
 			log.Println("Failed connect to all avaiable shadowsocks server")
 		}
 		return
@@ -346,8 +261,5 @@ func run(listenAddr string) {
 
 func main() {
 	ss.SetDebug(true)
-
-	parseServerConfig(&flora.Config)
-
-	run("0.0.0.0:" + strconv.Itoa(flora.Config.LocalPort))
+	run("0.0.0.0:" + fmt.Sprintf("%d", flora.SOCKS_PORT))
 }
