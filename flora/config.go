@@ -30,6 +30,7 @@ var ruleGeoIP = &DomainRule{}
 
 var ssConfig ss.Config
 var iniConfig *ini.File
+var debug ss.DebugLog
 
 type ProxyServerCipher struct {
 	Server string
@@ -59,8 +60,8 @@ func init() {
 	loadProxy()
 	loadRules()
 
-	log.Println(RuleOfHost("www.google.com"))
-	log.Println(RuleOfHost("www.twitter.com"))
+	debug.Println(RuleOfHost("www.google.com"))
+	debug.Println(RuleOfHost("www.twitter.com"))
 }
 
 // [Proxy] Section
@@ -233,7 +234,7 @@ func parseServerConfig() {
 	}
 	ProxyServers.FailCnt = make([]int, len(ProxyServers.SrvCipher))
 	for _, se := range ProxyServers.SrvCipher {
-		log.Println("available remote server", se.Server)
+		debug.Println("available remote server", se.Server)
 	}
 	return
 }

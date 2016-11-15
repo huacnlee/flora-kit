@@ -221,18 +221,16 @@ func handleConnection(conn net.Conn) {
 
 	rule := flora.RuleOfHost(host)
 	if rule.T == flora.RULE_REJECT {
-		log.Println(host, "REJECT")
+		log.Println("REJECT", host)
 		return
 	}
 
 	var remote net.Conn
 	if rule.T == flora.RULE_DIRECT {
-		// conn.Close()
+		log.Println("DIRECT", host)
 		remote = createDirectRemoteConn(host)
-		log.Println(host, "DIRECT")
 	} else {
-		log.Println("host", host)
-
+		log.Println("PROXY ", host)
 		remote, err = createServerConn(rawaddr, host)
 		if err != nil {
 			if len(flora.ProxyServers.SrvCipher) > 1 {
@@ -255,20 +253,18 @@ func handleConnection(conn net.Conn) {
 }
 
 func createDirectRemoteConn(host string) net.Conn {
-	client, err := net.Dial("tcp", host)
+	remote, err := net.Dial("tcp", host)
 	if err != nil {
 		log.Println("Connection to ", host, "failed.")
 	}
-	return client
+	return remote
 }
 
 func run(listenAddr string) {
-	debug = true
 	ln, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("starting local socks5 server at %v ...\n", listenAddr)
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
