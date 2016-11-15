@@ -1,26 +1,40 @@
 package flora
 
 import (
-	"fmt"
 	"github.com/oschwald/geoip2-golang"
+	"log"
 	"net"
 	"strings"
 )
 
 var geoDB *geoip2.Reader
 
-func init() {
+func loadGeoIP() {
 	file := "./geoip.mmdb"
 	db, err := geoip2.Open(file)
-	defer db.Close()
+	// defer db.Close()
 	if err != nil {
-		fmt.Printf("Could not open GeoIP database\n")
+		log.Printf("Could not open GeoIP database\n")
 	}
+	// log.Println("GeoIP inited.")
 	geoDB = db
 }
 
-func GeoIP(ipaddr string) string {
+func GeoIPString(ipaddr string) string {
 	ip := net.ParseIP(ipaddr)
+	return GeoIP(ip)
+}
+
+func GeoIPs(ips []net.IP) string {
+	if len(ips) == 0 {
+		return ""
+	}
+
+	return GeoIP(ips[0])
+}
+
+func GeoIP(ip net.IP) string {
+	// log.Println("Lookup GEO IP", ip)
 	country, err := geoDB.Country(ip)
 	if err != nil {
 		return ""

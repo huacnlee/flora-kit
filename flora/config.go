@@ -57,10 +57,11 @@ func init() {
 	}
 	iniConfig = cfg
 
+	loadGeoIP()
 	loadProxy()
 	loadRules()
 
-	debug.Println(RuleOfHost("www.google.com"))
+	debug.Println("104.244.42.129", GeoIPString("104.244.42.129"))
 	debug.Println(RuleOfHost("www.twitter.com"))
 }
 
@@ -139,28 +140,45 @@ func readArrayLine(source string) []string {
 	return out
 }
 
-func RuleOfHost(host string) *DomainRule {
+func RuleOfHost(host string) (result *DomainRule) {
+	result = &DomainRule{S: "", T: RULE_DIRECT}
 	hostParts := strings.Split(host, ":")
 	domain := hostParts[0]
 
 	for _, rule := range ruleSuffixDomains {
 		if strings.HasSuffix(domain, rule.S) {
-			return rule
+			result = rule
+			return
 		}
 	}
 
 	for _, rule := range rulePrefixDomains {
 		if strings.HasPrefix(domain, rule.S) {
-			return rule
+			result = rule
+			return
 		}
 	}
 
 	for _, rule := range ruleKeywordDomains {
 		if strings.Contains(domain, rule.S) {
-			return rule
+			result = rule
+			return
 		}
 	}
-	return &DomainRule{S: "", T: RULE_DIRECT}
+
+	ips, err := net.LookupIP(host)
+	if err != nil || len(ips) == 0 {
+		return
+	}
+
+	country := GeoIPs(ips)
+	log.Println("Found ip geo", country)
+	if len(country) != 0 && ruleGeoIP.S == country {
+		result = ruleGeoIP
+		return
+	}
+
+	return
 }
 
 func parseServerConfig() {
