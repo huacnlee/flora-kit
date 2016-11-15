@@ -5,14 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"github.com/huacnlee/flora-kit/flora"
+	ss "github.com/shadowsocks/shadowsocks-go/shadowsocks"
 	"io"
 	"log"
 	"math/rand"
 	"net"
 	"strconv"
 	"time"
-
-	ss "github.com/shadowsocks/shadowsocks-go/shadowsocks"
 )
 
 var debug ss.DebugLog
@@ -133,18 +132,16 @@ func getRequest(conn net.Conn) (rawaddr []byte, host string, err error) {
 
 	rawaddr = buf[idType:reqLen]
 
-	if debug {
-		switch buf[idType] {
-		case typeIPv4:
-			host = net.IP(buf[idIP0 : idIP0+net.IPv4len]).String()
-		case typeIPv6:
-			host = net.IP(buf[idIP0 : idIP0+net.IPv6len]).String()
-		case typeDm:
-			host = string(buf[idDm0 : idDm0+buf[idDmLen]])
-		}
-		port := binary.BigEndian.Uint16(buf[reqLen-2 : reqLen])
-		host = net.JoinHostPort(host, strconv.Itoa(int(port)))
+	switch buf[idType] {
+	case typeIPv4:
+		host = net.IP(buf[idIP0 : idIP0+net.IPv4len]).String()
+	case typeIPv6:
+		host = net.IP(buf[idIP0 : idIP0+net.IPv6len]).String()
+	case typeDm:
+		host = string(buf[idDm0 : idDm0+buf[idDmLen]])
 	}
+	port := binary.BigEndian.Uint16(buf[reqLen-2 : reqLen])
+	host = net.JoinHostPort(host, strconv.Itoa(int(port)))
 
 	return
 }
@@ -194,6 +191,7 @@ func createServerConn(rawaddr []byte, addr string) (remote *ss.Conn, err error) 
 	return nil, err
 }
 
+// 连接请求入口
 func handleConnection(conn net.Conn) {
 	if debug {
 		debug.Printf("socks connect from %s\n", conn.RemoteAddr().String())
@@ -210,7 +208,7 @@ func handleConnection(conn net.Conn) {
 		log.Println("socks handshake:", err)
 		return
 	}
-	rawaddr, addr, err := getRequest(conn)
+	rawaddr, host, err := getRequest(conn)
 	if err != nil {
 		log.Println("error getting request:", err)
 		return
@@ -224,7 +222,19 @@ func handleConnection(conn net.Conn) {
 		return
 	}
 
-	remote, err := createServerConn(rawaddr, addr)
+	rule := flora.RuleOfHost(host)
+	if rule.T == flora.RULE_REJECT {
+		log.Println(host, "REJECT")
+		return
+	}
+	if rule.T == flora.RULE_DIRECT {
+		conn.Close()
+		log.Println(host, "DIRECT")
+	}
+
+	log.Println("host", host)
+
+	remote, err := createServerConn(rawaddr, host)
 	if err != nil {
 		if len(flora.ProxyServers.SrvCipher) > 1 {
 			log.Println("Failed connect to all avaiable shadowsocks server")
@@ -240,7 +250,7 @@ func handleConnection(conn net.Conn) {
 	go ss.PipeThenClose(conn, remote)
 	ss.PipeThenClose(remote, conn)
 	closed = true
-	debug.Println("closed connection to", addr)
+	debug.Println("closed connection to", host)
 }
 
 func run(listenAddr string) {

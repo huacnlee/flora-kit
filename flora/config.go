@@ -139,20 +139,23 @@ func readArrayLine(source string) []string {
 }
 
 func RuleOfHost(host string) *DomainRule {
+	hostParts := strings.Split(host, ":")
+	domain := hostParts[0]
+
 	for _, rule := range ruleSuffixDomains {
-		if strings.HasSuffix(host, rule.S) {
+		if strings.HasSuffix(domain, rule.S) {
 			return rule
 		}
 	}
 
 	for _, rule := range rulePrefixDomains {
-		if strings.HasPrefix(host, rule.S) {
+		if strings.HasPrefix(domain, rule.S) {
 			return rule
 		}
 	}
 
 	for _, rule := range ruleKeywordDomains {
-		if strings.Contains(host, rule.S) {
+		if strings.Contains(domain, rule.S) {
 			return rule
 		}
 	}
