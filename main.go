@@ -193,9 +193,6 @@ func createServerConn(rawaddr []byte, addr string) (remote *ss.Conn, err error) 
 
 // 连接请求入口
 func handleConnection(conn net.Conn) {
-	if debug {
-		debug.Printf("socks connect from %s\n", conn.RemoteAddr().String())
-	}
 	closed := false
 	defer func() {
 		if !closed {
@@ -227,20 +224,24 @@ func handleConnection(conn net.Conn) {
 		log.Println(host, "REJECT")
 		return
 	}
+
+	var remote net.Conn
 	if rule.T == flora.RULE_DIRECT {
-		conn.Close()
+		// conn.Close()
+		remote = createDirectRemoteConn(host)
 		log.Println(host, "DIRECT")
-	}
+	} else {
+		log.Println("host", host)
 
-	log.Println("host", host)
-
-	remote, err := createServerConn(rawaddr, host)
-	if err != nil {
-		if len(flora.ProxyServers.SrvCipher) > 1 {
-			log.Println("Failed connect to all avaiable shadowsocks server")
+		remote, err = createServerConn(rawaddr, host)
+		if err != nil {
+			if len(flora.ProxyServers.SrvCipher) > 1 {
+				log.Println("Failed connect to all avaiable shadowsocks server")
+			}
+			return
 		}
-		return
 	}
+
 	defer func() {
 		if !closed {
 			remote.Close()
@@ -253,7 +254,16 @@ func handleConnection(conn net.Conn) {
 	debug.Println("closed connection to", host)
 }
 
+func createDirectRemoteConn(host string) net.Conn {
+	client, err := net.Dial("tcp", host)
+	if err != nil {
+		log.Println("Connection to ", host, "failed.")
+	}
+	return client
+}
+
 func run(listenAddr string) {
+	debug = true
 	ln, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		log.Fatal(err)
