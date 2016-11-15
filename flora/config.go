@@ -43,8 +43,8 @@ var ProxyServers struct {
 }
 
 func init() {
-	var configFilename = "/Users/jason/Dropbox/Surge/Default.conf"
-	var userConfigFilename = "/Users/jason/Dropbox/Surge/User.conf"
+	var configFilename = "./flora.default.conf"
+	var userConfigFilename = "./flora.user.conf"
 	var iniOpts = ini.LoadOptions{
 		AllowBooleanKeys: true,
 		Loose:            true,

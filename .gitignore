@@ -18,9 +18,11 @@ _cgo_gotypes.go
 _cgo_export.*
 
 _testmain.go
+*.user.conf
 
 *.exe
 *.test
 *.prof
+*.zip
 flora-kit
 .DS_Store
