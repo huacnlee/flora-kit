@@ -228,7 +228,11 @@ func handleConnection(conn net.Conn) {
 	var remote net.Conn
 	if rule.T == flora.RULE_DIRECT {
 		log.Println("DIRECT", host)
-		remote = createDirectRemoteConn(host)
+		remote, err = net.Dial("tcp", host)
+		if err != nil {
+			log.Println("Failed connect to all remote server via Direct")
+			return
+		}
 	} else {
 		log.Println("PROXY ", host)
 		remote, err = createServerConn(rawaddr, host)
@@ -249,15 +253,6 @@ func handleConnection(conn net.Conn) {
 	go ss.PipeThenClose(conn, remote)
 	ss.PipeThenClose(remote, conn)
 	closed = true
-	debug.Println("closed connection to", host)
-}
-
-func createDirectRemoteConn(host string) net.Conn {
-	remote, err := net.Dial("tcp", host)
-	if err != nil {
-		log.Println("Connection to ", host, "failed.")
-	}
-	return remote
 }
 
 func run(listenAddr string) {
