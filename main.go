@@ -3,14 +3,14 @@ package main
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"math/rand"
 	"net"
-	"os"
 	"strconv"
 	"time"
+
+	"github.com/huacnlee/flora-kit/flora"
 
 	ss "github.com/shadowsocks/shadowsocks-go/shadowsocks"
 )
@@ -344,35 +344,10 @@ func run(listenAddr string) {
 	}
 }
 
-func enoughOptions(config *ss.Config) bool {
-	return config.Server != nil && config.ServerPort != 0 &&
-		config.LocalPort != 0 && config.Password != ""
-}
-
 func main() {
-	var config ss.Config
-
-	// ShadowSocks Server
-	config.ServerPassword = append(config.ServerPassword, []string{"47.88.162.112:8443", "", "aes-256-cfb"})
-	config.LocalPort = 7657
 	ss.SetDebug(true)
 
-	if config.Method == "" {
-		config.Method = "aes-256-cfb"
-	}
-	if len(config.ServerPassword) == 0 {
-		if !enoughOptions(&config) {
-			fmt.Fprintln(os.Stderr, "must specify server address, password and both server/local port")
-			os.Exit(1)
-		}
-	} else {
-		if config.LocalPort == 0 {
-			fmt.Fprintln(os.Stderr, "must specify local port")
-			os.Exit(1)
-		}
-	}
+	parseServerConfig(&flora.Config)
 
-	parseServerConfig(&config)
-
-	run("0.0.0.0:" + strconv.Itoa(config.LocalPort))
+	run("0.0.0.0:" + strconv.Itoa(flora.Config.LocalPort))
 }
