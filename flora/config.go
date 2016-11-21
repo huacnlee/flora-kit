@@ -58,11 +58,28 @@ func init() {
 	iniConfig = cfg
 
 	loadGeoIP()
+	loadGeneral()
 	loadProxy()
 	loadRules()
 
+	SetSocksFirewallProxy()
+
 	debug.Println("104.244.42.129", GeoIPString("104.244.42.129"))
 	debug.Println(RuleOfHost("www.twitter.com"))
+}
+
+// [General] section
+func loadGeneral() {
+	section := iniConfig.Section("General")
+
+	bypassDomains := []string{}
+	if section.HasKey("skip-proxy") {
+		bypassDomains = append(bypassDomains, readArrayLine(section.Key("skip-proxy").String())...)
+	}
+	if section.HasKey("bypass-tun") {
+		bypassDomains = append(bypassDomains, readArrayLine(section.Key("bypass-tun").String())...)
+	}
+	SetProxyBypassDomains(bypassDomains)
 }
 
 // [Proxy] Section

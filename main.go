@@ -256,6 +256,8 @@ func handleConnection(conn net.Conn) {
 }
 
 func run(listenAddr string) {
+	flora.ResetAllProxys()
+
 	ln, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		log.Fatal(err)
