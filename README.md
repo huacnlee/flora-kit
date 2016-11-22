@@ -1,36 +1,23 @@
-# flora-kit
-Flora Proxy server
+flora-kit
+---------
 
-## 网络调整命令
+基于 [shadowsocks-go](https://github.com/shadowsocks/shadowsocks-go) 做的完善实现，完全兼容 Surge 的配置文件。
 
-列出所有网络链接方式
+> NOTE: 目前已完整实现自动翻墙的逻辑，可以用了。
 
-```
-$ networksetup -listallnetworkservices
-```
+## 功能列表
 
-并循环设置
+- ShadowSocks 代理，实现 socks 代理;
+- 域名关键词、前缀、后缀白名单，黑名单；
+- IP 白名单，黑名单；
+- GeoIP 判断区域，自动选择线路；
+- 自动改变 macOS 网路代理配置；
 
-获取某个连接的 Socks Proxy 配置
+## TODO
 
-```
-$ networksetup -setsocksfirewallproxy <networkservice> <domain> <port number> <authenticated> <username> <password>
-```
+- HTTP, HTTPS proxy 实现；
+- 自动代理 pac 实现；
 
-获取某个连接的 HTTP Procx 配置
+## License
 
-```
-$ networksetup -setwebproxy <networkservice> <domain> <port number> <authenticated> <username> <password>
-```
-
-获取某个连接的 HTTPS Proxy 配置
-
-```
-$ networksetup -setsecurewebproxy <networkservice> <domain> <port number> <authenticated> <username> <password>
-```
-
-设置 Proxy ByPass
-
-```
-$ networksetup -setproxybypassdomains <networkservice> <domain1> [domain2] [...]
-```
+Apache License 2.0
