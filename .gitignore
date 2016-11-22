@@ -27,3 +27,5 @@ _testmain.go
 flora-kit
 .DS_Store
 *.log
+release/
+*.tar.*

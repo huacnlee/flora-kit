@@ -18,6 +18,15 @@ flora-kit
 - HTTP, HTTPS proxy 实现；
 - 自动代理 pac 实现；
 
+## 运行
+
+由于启动的时候，需要修改系统的网络配置，所以你需要用 sudo 来执行:
+
+```bash
+cd flora
+sudo ./flora-kit
+```
+
 ## License
 
 Apache License 2.0
