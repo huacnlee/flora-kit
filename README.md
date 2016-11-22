@@ -20,6 +20,8 @@ flora-kit
 
 ## 运行
 
+下载 https://github.com/huacnlee/flora-kit/releases/download/0.1/flora-0.1.zip
+
 由于启动的时候，需要修改系统的网络配置，所以你需要用 sudo 来执行:
 
 ```bash
