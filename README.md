@@ -5,6 +5,8 @@ flora-kit
 
 > NOTE: 目前已完整实现自动翻墙的逻辑，可以用了。
 
+<img width="626" alt="2016-11-22 11 00 00" src="https://cloud.githubusercontent.com/assets/5518/20509326/d9a2ad9a-b0a2-11e6-9b9c-f6a59445b8d9.png">
+
 ## 功能列表
 
 - ShadowSocks 代理，实现 socks 代理;
