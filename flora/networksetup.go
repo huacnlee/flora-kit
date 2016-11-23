@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
+	"runtime"
 	"strings"
 )
 
@@ -13,6 +14,10 @@ type execNetworkFunc func(name string)
 var allow_services = "Wi-Fi|Thunderbolt Bridge|Thunderbolt Ethernet"
 
 func ResetAllProxys() {
+	if runtime.GOOS != "darwin" {
+		log.Println("WARN: Your not in macOS, Networksetup skiped. Please change Network proxy setting by manually.")
+	}
+
 	execNetworks(func(name string) {
 		runNetworksetup("-setftpproxystate", name, "off")
 		runNetworksetup("-setwebproxystate", name, "off")
@@ -39,6 +44,10 @@ func SetProxyBypassDomains(domains []string) {
 }
 
 func runNetworksetup(args ...string) string {
+	if runtime.GOOS != "darwin" {
+		return ""
+	}
+
 	// log.Println("networksetup", args)
 	cmd := exec.Command("networksetup", args...)
 	var out, stderr bytes.Buffer

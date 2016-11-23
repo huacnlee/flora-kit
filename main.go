@@ -262,6 +262,8 @@ func run(listenAddr string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	log.Println("Listen socks", listenAddr)
+
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
