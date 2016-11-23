@@ -12,6 +12,7 @@ import (
 )
 
 const (
+	VERSION     = "0.1.1"
 	SOCKS_PORT  = 7657
 	RULE_REJECT = 0
 	RULE_DIRECT = 1

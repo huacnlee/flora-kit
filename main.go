@@ -276,5 +276,6 @@ func run(listenAddr string) {
 
 func main() {
 	ss.SetDebug(true)
+	log.Println("Floar", flora.VERSION)
 	run("0.0.0.0:" + fmt.Sprintf("%d", flora.SOCKS_PORT))
 }
