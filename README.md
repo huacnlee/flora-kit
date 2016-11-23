@@ -19,10 +19,14 @@ flora-kit
 
 - HTTP, HTTPS proxy 实现；
 - 自动代理 pac 实现；
+- 根据系统环境调用不同的网络设置命令;
+- 编译 Linux 二进制；
 
 ## 运行
 
-下载 https://github.com/huacnlee/flora-kit/releases/download/0.1/flora-0.1.zip
+> NOTE: 目前仅支持 macOS，Linux 理论上是可以跑的，只是内部有调用 macOS 网络设置命令的流程，需要调整一下才能支持 Linux;
+
+下载 https://github.com/huacnlee/flora-kit/releases/download/0.1/flora-macOS-0.1.zip
 
 由于启动的时候，需要修改系统的网络配置，所以你需要用 sudo 来执行:
 
