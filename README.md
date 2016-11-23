@@ -1,5 +1,5 @@
-flora-kit
----------
+Flora
+-----
 
 基于 [shadowsocks-go](https://github.com/shadowsocks/shadowsocks-go) 做的完善实现，完全兼容 Surge 的配置文件。
 
@@ -32,7 +32,7 @@ https://github.com/huacnlee/flora-kit/releases
 
 ```bash
 cd flora
-sudo ./flora-kit
+sudo ./flora
 ```
 
 ## License
