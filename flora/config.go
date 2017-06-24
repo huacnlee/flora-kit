@@ -33,19 +33,22 @@ var iniConfig *ini.File
 var debug ss.DebugLog
 
 type ProxyServerCipher struct {
-	Server string
-	Cipher *ss.Cipher
+	ProxyType         string
+	Server            string
+	ShadowSocksCipher *ss.Cipher
 }
 
 type ProxyConfig struct {
-	Name   string
-	Type   string
-	Config []string
+	Name              string
+	Type              string
+	ShadowSocksConfig []string
 }
 
 var ProxyServers struct {
-	SrvCipher map[string][]*ProxyServerCipher
-	FailCnt   map[string]int // failed connection count
+	SrvCipher      map[string]*ProxyServerCipher
+	SrvCipherGroup map[string][]*ProxyServerCipher
+	FailCipher     map[string]*ProxyServerCipher // failed connection count
+	GetCipher      func(name string) *ProxyServerCipher
 }
 
 func LoadConfig(cfgFile string, geoFile string) {
@@ -118,34 +121,44 @@ func loadProxy() map[string]ProxyConfig {
 			//[ip:port,password,method]
 			var server = strings.Join(proxyStrCfg[1:3], ":")
 			var serverInfo = []string{server, proxyStrCfg[4], proxyStrCfg[3]}
-			proxy.Config = serverInfo
+			proxy.ShadowSocksConfig = serverInfo
 		}
 		serverMapping[key] = proxy
 	}
 	return serverMapping
 }
 
-// Proxy -> name -> proxyServerList index
-//
-//
+//[Proxy Group] Section
 func loadProxyGroup() {
-	proxyList := initProxyServerConfig()
+	initProxyServerConfig()
 	section := iniConfig.Section("Proxy Group")
-	ProxyServers.SrvCipher = make(map[string][]*ProxyServerCipher)
+	ProxyServers.SrvCipherGroup = make(map[string][]*ProxyServerCipher)
 	for _, key := range section.KeyStrings() {
 		v, _ := section.GetKey(key)
 		proxyArr := readArrayLine(v.String())
-		//t := proxyArr[0]
-		proxyItems := make([]*ProxyServerCipher, len(proxyArr)-1)
-		for _, p := range proxyArr[1:] {
-			proxyItems = append(proxyItems, proxyList[p])
+		proxyItems := make([]*ProxyServerCipher, len(proxyArr))
+		//🚀 Proxy = select, 🌞 Line
+		if len(proxyItems) > 1 {
+			for _, p := range proxyArr[1:] {
+				proxyItems = append(proxyItems, ProxyServers.SrvCipher[p])
+			}
 		}
-		ProxyServers.SrvCipher[key] = proxyItems
+		ProxyServers.SrvCipherGroup[key] = proxyItems
+	}
+
+	ProxyServers.GetCipher = func(name string) *ProxyServerCipher {
+		const baseFailCnt = 20
+		svrCipher, ok := ProxyServers.SrvCipher[name]
+		if !ok {
+			//group := ProxyServers.SrvCipherGroup[name]
+
+		}
+		return svrCipher
 	}
 
 }
 
-func initProxyServerConfig() map[string]*ProxyServerCipher {
+func initProxyServerConfig() {
 	hasPort := func(s string) bool {
 		_, port, err := net.SplitHostPort(s)
 		if err != nil {
@@ -156,25 +169,30 @@ func initProxyServerConfig() map[string]*ProxyServerCipher {
 	proxySvrs := loadProxy()
 	cipherCache := make(map[string]*ProxyServerCipher)
 	for k, v := range proxySvrs {
-		serverInfo := v.Config
-		server := serverInfo[0]
-		passwd := serverInfo[1]
-		encmethod := ""
-		if len(serverInfo) == 3 {
-			encmethod = serverInfo[2]
+		serverCipher := ProxyServerCipher{ProxyType: v.Type}
+		if v.Type == "custom" || v.Type == "shadowsocks" {
+			serverInfo := v.ShadowSocksConfig
+			server := serverInfo[0]
+			passwd := serverInfo[1]
+			encmethod := ""
+			if len(serverInfo) == 3 {
+				encmethod = serverInfo[2]
+			}
+			if !hasPort(server) {
+				log.Printf("no port for server %s\n", server)
+				continue
+			}
+			cipher, err := ss.NewCipher(encmethod, passwd)
+			if err != nil {
+				log.Printf("Failed generating ciphers %s\n", err)
+				continue
+			}
+			serverCipher.Server = server
+			serverCipher.ShadowSocksCipher = cipher
 		}
-		if !hasPort(server) {
-			log.Printf("no port for server %s\n", server)
-			continue
-		}
-		cipher, err := ss.NewCipher(encmethod, passwd)
-		if err != nil {
-			log.Printf("Failed generating ciphers %s\n", err)
-			continue
-		}
-		cipherCache[k] = &ProxyServerCipher{server, cipher}
+		cipherCache[k] = &serverCipher
 	}
-	return cipherCache
+	ProxyServers.SrvCipher = cipherCache
 }
 
 // 载入 [Rule]

@@ -148,7 +148,7 @@ func getRequest(conn net.Conn) (rawaddr []byte, host string, err error) {
 }
 
 func connectToServer(roleName string, rawaddr []byte, addr string) (remote *ss.Conn, err error) {
-	se := flora.ProxyServers.SrvCipher[roleName]
+	se := flora.ProxyServers.SrvCipherGroup[roleName]
 	remote, err = ss.DialWithRawAddr(rawaddr, se.Server, se.Cipher.Copy())
 	if err != nil {
 		log.Println("error connecting to shadowsocks server:", err)
@@ -169,7 +169,7 @@ func connectToServer(roleName string, rawaddr []byte, addr string) (remote *ss.C
 // servers.
 func createServerConn(roleName string, rawaddr []byte, addr string) (remote *ss.Conn, err error) {
 	const baseFailCnt = 20
-	n := len(flora.ProxyServers.SrvCipher)
+	n := len(flora.ProxyServers.SrvCipherGroup)
 	skipped := make([]int, 0)
 	for i := 0; i < n; i++ {
 		// skip failed server, but try it with some probability
@@ -238,7 +238,7 @@ func handleConnection(conn net.Conn) {
 		log.Println("PROXY ", host)
 		remote, err = createServerConn(rule.T, rawaddr, host)
 		if err != nil {
-			if len(flora.ProxyServers.SrvCipher) > 1 {
+			if len(flora.ProxyServers.SrvCipherGroup) > 1 {
 				log.Println("Failed connect to all avaiable shadowsocks server")
 			}
 			return
