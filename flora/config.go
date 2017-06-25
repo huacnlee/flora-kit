@@ -9,32 +9,34 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"math/rand"
+	"sync"
 )
 
 const (
 	VERSION     = "0.1.1"
-	SOCKS_PORT  = 7657
+	SOCKS_PORT  = 1080
 	RULE_REJECT = "REJECT"
 	RULE_DIRECT = "DIRECT"
-	RULE_PROXY  = "PROXY"
 )
 
-type DomainRule struct {
-	S string
-	T string
+type HostRule struct {
+	Match  string
+	Action string
 }
 
-var ruleSuffixDomains = []*DomainRule{}
-var rulePrefixDomains = []*DomainRule{}
-var ruleKeywordDomains = []*DomainRule{}
-var ruleGeoIP = &DomainRule{}
-
+var ruleSuffixDomains = []*HostRule{}
+var rulePrefixDomains = []*HostRule{}
+var ruleKeywordDomains = []*HostRule{}
+var ruleGeoIP = []*HostRule{}
+var ruleFinal *HostRule
+var failMapLock *sync.RWMutex
 var iniConfig *ini.File
-var debug ss.DebugLog
 
 type ProxyServerCipher struct {
 	ProxyType         string
 	Server            string
+	Effective         bool
 	ShadowSocksCipher *ss.Cipher
 }
 
@@ -45,10 +47,13 @@ type ProxyConfig struct {
 }
 
 var ProxyServers struct {
+	ListenAddress  string
+	LocalSocksPort int
 	SrvCipher      map[string]*ProxyServerCipher
 	SrvCipherGroup map[string][]*ProxyServerCipher
-	FailCipher     map[string]*ProxyServerCipher // failed connection count
 	GetCipher      func(name string) *ProxyServerCipher
+	FailCipher     func(name string) int
+	failCipher     *SyncMap // failed connection count
 }
 
 func LoadConfig(cfgFile string, geoFile string) {
@@ -72,20 +77,15 @@ func LoadConfig(cfgFile string, geoFile string) {
 	if err != nil {
 		panic(fmt.Sprintf("Config file %v not found, or have error: \n\t%v", geoFile, err))
 	}
-	var ssConfig = ss.Config{}
-
+	loadProxyGroup()
 	loadGeoIP(geoFilename)
-	loadGeneral(&ssConfig)
+	loadGeneral()
 	loadRules()
-
 	SetSocksFirewallProxy()
-
-	debug.Println("104.244.42.129", GeoIPString("104.244.42.129"))
-	debug.Println(RuleOfHost("www.twitter.com"))
 }
 
 // [General] section
-func loadGeneral(ssCfg *ss.Config) {
+func loadGeneral() {
 	section := iniConfig.Section("General")
 
 	bypassDomains := []string{}
@@ -98,13 +98,20 @@ func loadGeneral(ssCfg *ss.Config) {
 	if section.HasKey("socks-port") {
 		port, err := strconv.Atoi(section.Key("socks-port").String())
 		if nil != err {
-			ssCfg.LocalPort = SOCKS_PORT
+			port = SOCKS_PORT
+		} else {
+			ProxyServers.LocalSocksPort = port
 		}
-		ssCfg.LocalPort = port
-	} else {
-		ssCfg.LocalPort = SOCKS_PORT
 	}
-
+	if section.Haskey("interface") {
+		ipStr := section.Key("interface").String()
+		addr := net.ParseIP(ipStr)
+		if nil == addr {
+			ProxyServers.ListenAddress = "127.0.0.1"
+		} else {
+			ProxyServers.ListenAddress = ipStr
+		}
+	}
 	SetProxyBypassDomains(bypassDomains)
 }
 
@@ -112,10 +119,10 @@ func loadGeneral(ssCfg *ss.Config) {
 func loadProxy() map[string]ProxyConfig {
 	serverMapping := make(map[string]ProxyConfig)
 	section := iniConfig.Section("Proxy")
-	for _, key := range section.KeyStrings() {
-		v, _ := section.GetKey(key)
+	for _, name := range section.KeyStrings() {
+		v, _ := section.GetKey(name)
 		var proxyStrCfg = readArrayLine(v.String())
-		var proxy = ProxyConfig{Type: proxyStrCfg[0], Name: key}
+		var proxy = ProxyConfig{Type: proxyStrCfg[0], Name: name}
 		// ShadowSocks Proxy
 		if len(proxyStrCfg) > 0 && (proxyStrCfg[0] == "custom" || proxyStrCfg[0] == "shadowsocks") {
 			//[ip:port,password,method]
@@ -123,42 +130,75 @@ func loadProxy() map[string]ProxyConfig {
 			var serverInfo = []string{server, proxyStrCfg[4], proxyStrCfg[3]}
 			proxy.ShadowSocksConfig = serverInfo
 		}
-		serverMapping[key] = proxy
+		serverMapping[name] = proxy
 	}
 	return serverMapping
 }
 
 //[Proxy Group] Section
 func loadProxyGroup() {
-	initProxyServerConfig()
+	const maxFailCnt = 30
+	srvCipherMap := initProxyServerConfig()
 	section := iniConfig.Section("Proxy Group")
 	ProxyServers.SrvCipherGroup = make(map[string][]*ProxyServerCipher)
 	for _, key := range section.KeyStrings() {
 		v, _ := section.GetKey(key)
+		groupName := strings.ToUpper(key)
 		proxyArr := readArrayLine(v.String())
-		proxyItems := make([]*ProxyServerCipher, len(proxyArr))
+		proxyItems := make([]*ProxyServerCipher, len(proxyArr)-1)
 		//🚀 Proxy = select, 🌞 Line
-		if len(proxyItems) > 1 {
-			for _, p := range proxyArr[1:] {
-				proxyItems = append(proxyItems, ProxyServers.SrvCipher[p])
+		if len(proxyArr) > 1 {
+			for i, p := range proxyArr[1:] {
+				proxyName := strings.ToUpper(p)
+				proxyItems[i] = srvCipherMap[proxyName]
 			}
 		}
-		ProxyServers.SrvCipherGroup[key] = proxyItems
+		ProxyServers.SrvCipherGroup[groupName] = proxyItems
+	}
+
+	ProxyServers.SrvCipher = srvCipherMap
+	ProxyServers.failCipher = NewSyncMap()
+	ProxyServers.FailCipher = func(name string) int {
+		var cnt int
+		failMapLock.Lock()
+		itf := ProxyServers.failCipher.Get(name)
+		defer failMapLock.Unlock()
+		if nil != itf {
+			cnt = itf.(int)
+		}
+		cnt ++
+		ProxyServers.failCipher.Set(name, cnt)
+		return cnt
 	}
 
 	ProxyServers.GetCipher = func(name string) *ProxyServerCipher {
-		const baseFailCnt = 20
+		var cnt int
+		itf := ProxyServers.failCipher.Get(name)
+		if nil != itf {
+			cnt = itf.(int)
+			if cnt >= maxFailCnt {
+				log.Printf("Proxy Server [%s] connect exceeds the maximum number of failures ", name)
+				os.Exit(1)
+			}
+		}
+
 		svrCipher, ok := ProxyServers.SrvCipher[name]
 		if !ok {
-			//group := ProxyServers.SrvCipherGroup[name]
-
+			group := ProxyServers.SrvCipherGroup[name]
+			eff := []*ProxyServerCipher{}
+			for _, s := range group {
+				e := s.Effective
+				if e {
+					eff = append(eff, s)
+				}
+			}
+			return eff[rand.Intn(len(eff))]
 		}
 		return svrCipher
 	}
-
 }
 
-func initProxyServerConfig() {
+func initProxyServerConfig() map[string]*ProxyServerCipher {
 	hasPort := func(s string) bool {
 		_, port, err := net.SplitHostPort(s)
 		if err != nil {
@@ -168,10 +208,11 @@ func initProxyServerConfig() {
 	}
 	proxySvrs := loadProxy()
 	cipherCache := make(map[string]*ProxyServerCipher)
-	for k, v := range proxySvrs {
-		serverCipher := ProxyServerCipher{ProxyType: v.Type}
-		if v.Type == "custom" || v.Type == "shadowsocks" {
-			serverInfo := v.ShadowSocksConfig
+	for key, val := range proxySvrs {
+		svrName := strings.ToUpper(strings.TrimSpace(key))
+		serverCipher := ProxyServerCipher{ProxyType: val.Type, Effective: true}
+		if val.Type == "custom" || val.Type == "shadowsocks" {
+			serverInfo := val.ShadowSocksConfig
 			server := serverInfo[0]
 			passwd := serverInfo[1]
 			encmethod := ""
@@ -180,26 +221,33 @@ func initProxyServerConfig() {
 			}
 			if !hasPort(server) {
 				log.Printf("no port for server %s\n", server)
+				ProxyServers.failCipher.Set(svrName, 0)
 				continue
 			}
 			cipher, err := ss.NewCipher(encmethod, passwd)
 			if err != nil {
 				log.Printf("Failed generating ciphers %s\n", err)
+				ProxyServers.failCipher.Set(svrName, 0)
 				continue
 			}
 			serverCipher.Server = server
 			serverCipher.ShadowSocksCipher = cipher
 		}
-		cipherCache[k] = &serverCipher
+		cipherCache[svrName] = &serverCipher
 	}
-	ProxyServers.SrvCipher = cipherCache
+	return cipherCache
 }
 
 // 载入 [Rule]
 func loadRules() {
 	for _, key := range iniConfig.Section("Rule").KeyStrings() {
-		var items = readArrayLine(key)
-		var ruleType = RULE_DIRECT
+		if strings.HasPrefix(key, "//") {
+			continue
+		}
+		var (
+			items    = readArrayLine(key)
+			ruleType string
+		)
 		if len(items) >= 3 {
 			switch items[2] {
 			case "direct":
@@ -207,25 +255,23 @@ func loadRules() {
 			case "reject":
 				ruleType = RULE_REJECT
 			default:
-				ruleType = items[2]
+				ruleType = strings.ToUpper(items[2])
 			}
 		}
-		switch items[0] {
+		ruleName := strings.ToLower(items[0])
+		switch ruleName {
 		case "domain-suffix":
-			ruleSuffixDomains = append(ruleSuffixDomains, &DomainRule{S: items[1], T: ruleType})
+			ruleSuffixDomains = append(ruleSuffixDomains, &HostRule{Match: items[1], Action: ruleType})
 		case "domain-prefix":
-			rulePrefixDomains = append(rulePrefixDomains, &DomainRule{S: items[1], T: ruleType})
+			rulePrefixDomains = append(rulePrefixDomains, &HostRule{Match: items[1], Action: ruleType})
 		case "domain-keyword":
-			ruleKeywordDomains = append(ruleKeywordDomains, &DomainRule{S: items[1], T: ruleType})
+			ruleKeywordDomains = append(ruleKeywordDomains, &HostRule{Match: items[1], Action: ruleType})
 		case "geoip":
-			ruleGeoIP = &DomainRule{S: items[1], T: ruleType}
+			ruleGeoIP = append(ruleGeoIP, &HostRule{Match: items[1], Action: ruleType})
+		case "final":
+			ruleFinal = &HostRule{Match: "final", Action: strings.ToUpper(items[1])}
 		}
 	}
-}
-
-func enoughSSOptions(config *ss.Config) bool {
-	return config.Server != nil && config.ServerPort != 0 &&
-		config.LocalPort != 0 && config.Password != ""
 }
 
 func readArrayLine(source string) []string {
@@ -236,43 +282,55 @@ func readArrayLine(source string) []string {
 	return out
 }
 
-func RuleOfHost(host string) (result *DomainRule) {
-	result = &DomainRule{S: "", T: RULE_DIRECT}
+func RuleOfHost(host string) (*HostRule) {
 	hostParts := strings.Split(host, ":")
-	domain := hostParts[0]
-
+	domain := strings.ToLower(hostParts[0])
 	for _, rule := range ruleSuffixDomains {
-		if strings.HasSuffix(domain, rule.S) {
-			result = rule
-			return
+		if strings.HasSuffix(domain, rule.Match) {
+			return rule
 		}
 	}
-
 	for _, rule := range rulePrefixDomains {
-		if strings.HasPrefix(domain, rule.S) {
-			result = rule
-			return
+		if strings.HasPrefix(domain, rule.Match) {
+			return rule
 		}
 	}
 
 	for _, rule := range ruleKeywordDomains {
-		if strings.Contains(domain, rule.S) {
-			result = rule
-			return
+		if strings.Contains(domain, rule.Match) {
+			return rule
 		}
 	}
-
-	ips, err := net.LookupIP(host)
-	if err != nil || len(ips) == 0 {
-		return
+	ips := resolveRequestIPAddr(host)
+	if nil != ips {
+		country := strings.ToLower(GeoIPs(ips))
+		log.Println("Found ip geo", country)
+		for _, rule := range ruleGeoIP {
+			if len(country) != 0 && strings.ToLower(rule.Match) == country {
+				return rule
+			}
+		}
 	}
-
-	country := GeoIPs(ips)
-	log.Println("Found ip geo", country)
-	if len(country) != 0 && ruleGeoIP.S == country {
-		result = ruleGeoIP
-		return
+	if nil != ruleFinal {
+		return ruleFinal
+	} else {
+		return &HostRule{Match: "", Action: RULE_DIRECT}
 	}
+}
 
-	return
+func resolveRequestIPAddr(host string) []net.IP {
+	var (
+		ips []net.IP
+		err error
+	)
+	ip := net.ParseIP(host)
+	if nil == ip {
+		ips, err = net.LookupIP(host)
+		if err != nil || len(ips) == 0 {
+			return nil
+		}
+	} else {
+		ips = []net.IP{ip}
+	}
+	return ips
 }

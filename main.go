@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"time"
 	"flag"
+	"strings"
 )
 
 var debug ss.DebugLog
@@ -20,10 +21,11 @@ var debug ss.DebugLog
 var (
 	errAddrType      = errors.New("socks addr type not supported")
 	errVer           = errors.New("socks version not supported")
-	errMethod        = errors.New("socks only support 1 method now")
 	errAuthExtraData = errors.New("socks authentication get extra data")
 	errReqExtraData  = errors.New("socks request get extra data")
 	errCmd           = errors.New("socks command not supported")
+	errReject        = errors.New("socks reject this request")
+	errSupported     = errors.New("proxy type not supported")
 )
 
 const (
@@ -147,49 +149,38 @@ func getRequest(conn net.Conn) (rawaddr []byte, host string, err error) {
 	return
 }
 
-func connectToServer(roleName string, rawaddr []byte, addr string) (remote *ss.Conn, err error) {
-	se := flora.ProxyServers.SrvCipherGroup[roleName]
-	remote, err = ss.DialWithRawAddr(rawaddr, se.Server, se.Cipher.Copy())
-	if err != nil {
-		log.Println("error connecting to shadowsocks server:", err)
-		const maxFailCnt = 30
-		if flora.ProxyServers.FailCnt[roleName] < maxFailCnt {
-			flora.ProxyServers.FailCnt[roleName]++
+func connectToServer(action string, rawaddr []byte, addr string) (remote net.Conn, err error) {
+	se := flora.ProxyServers.GetCipher(action)
+	proxyType := strings.ToLower(se.ProxyType)
+	if proxyType == "custom" || proxyType == "shadowsocks" {
+		remote, err = ss.DialWithRawAddr(rawaddr, se.Server, se.ShadowSocksCipher.Copy())
+		if err != nil {
+			log.Println("error connecting to shadowsocks server:", err)
+			if flora.ProxyServers.FailCipher(action) == -1 {
+				return nil, err
+			}
 		}
-		return nil, err
+		debug.Printf("connected to %s via %s\n", addr, se.Server)
+		return
+	} else if proxyType == "direct" {
+		return net.Dial("tcp", addr)
 	}
-	debug.Printf("connected to %s via %s\n", addr, se.Server)
-	flora.ProxyServers.FailCnt[roleName] = 0
-	return
+	return nil, errSupported
 }
 
 // Connection to the server in the order specified in the config. On
 // connection failure, try the next server. A failed server will be tried with
 // some probability according to its fail count, so we can discover recovered
 // servers.
-func createServerConn(roleName string, rawaddr []byte, addr string) (remote *ss.Conn, err error) {
-	const baseFailCnt = 20
-	n := len(flora.ProxyServers.SrvCipherGroup)
-	skipped := make([]int, 0)
-	for i := 0; i < n; i++ {
-		// skip failed server, but try it with some probability
-		if flora.ProxyServers.FailCnt[roleName] > 0 && rand.Intn(flora.ProxyServers.FailCnt[roleName]+baseFailCnt) != 0 {
-			skipped = append(skipped, i)
-			continue
-		}
-		remote, err = connectToServer(roleName, rawaddr, addr)
-		if err == nil {
-			return
-		}
+func createServerConn(rule *flora.HostRule, rawaddr []byte, addr string) (remote net.Conn, err error) {
+	switch rule.Action {
+	case flora.RULE_DIRECT:
+		return net.Dial("tcp", addr)
+	case flora.RULE_REJECT:
+		return nil, errReject
+	default:
+		return connectToServer(rule.Action, rawaddr, addr)
 	}
-	// last resort, try skipped servers, not likely to succeed
-	for i := 0; i < n; i++ {
-		remote, err = connectToServer(roleName, rawaddr, addr)
-		if err == nil {
-			return
-		}
-	}
-	return nil, err
 }
 
 // 连接请求入口
@@ -200,7 +191,6 @@ func handleConnection(conn net.Conn) {
 			conn.Close()
 		}
 	}()
-
 	var err error = nil
 	if err = handShake(conn); err != nil {
 		log.Println("socks handshake:", err)
@@ -219,30 +209,15 @@ func handleConnection(conn net.Conn) {
 		debug.Println("send connection confirmation:", err)
 		return
 	}
-
 	rule := flora.RuleOfHost(host)
-	if rule.T == flora.RULE_REJECT {
-		log.Println("REJECT", host)
-		return
-	}
-
+	log.Printf("[%25s]\t\t➔\t\t[%10s]\t\t√\t\t[%40s]", rule.Match, rule.Action, host)
 	var remote net.Conn
-	if rule.T == flora.RULE_DIRECT {
-		log.Println("DIRECT", host)
-		remote, err = net.Dial("tcp", host)
-		if err != nil {
-			log.Println("Failed connect to all remote server via Direct")
-			return
+	remote, err = createServerConn(rule, rawaddr, host)
+	if err != nil {
+		if len(flora.ProxyServers.SrvCipherGroup) > 1 {
+			log.Printf("[%25s]\t\t➔\t\t[%10s]\t\t×\t\t[%40s] Failed connect to all avaiable shadowsocks server ", rule.Match, rule.Action, host)
 		}
-	} else {
-		log.Println("PROXY ", host)
-		remote, err = createServerConn(rule.T, rawaddr, host)
-		if err != nil {
-			if len(flora.ProxyServers.SrvCipherGroup) > 1 {
-				log.Println("Failed connect to all avaiable shadowsocks server")
-			}
-			return
-		}
+		return
 	}
 
 	defer func() {
@@ -279,9 +254,10 @@ func main() {
 	var configFile, geoipdb string
 	flag.StringVar(&configFile, "s", "flora.default.conf", "specify surge config file")
 	flag.StringVar(&geoipdb, "d", "geoip.mmdb", "specify geoip db file")
-
 	flora.LoadConfig(configFile, geoipdb)
-	ss.SetDebug(true)
 	log.Println("Floar", flora.VERSION)
-	run("0.0.0.0:" + fmt.Sprintf("%d", flora.SOCKS_PORT))
+	if flora.ProxyServers.LocalSocksPort > 0 {
+		run("0.0.0.0:" + fmt.Sprintf("%d", flora.ProxyServers.LocalSocksPort))
+	}
+
 }
