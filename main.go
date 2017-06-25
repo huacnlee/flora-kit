@@ -210,12 +210,12 @@ func handleConnection(conn net.Conn) {
 		return
 	}
 	rule := flora.RuleOfHost(host)
-	log.Printf("[%25s]\t\t➔\t\t[%10s]\t\t√\t\t[%40s]", rule.Match, rule.Action, host)
+	log.Printf("[%s]➔[%s]√[%s]", rule.Match, rule.Action, host)
 	var remote net.Conn
 	remote, err = createServerConn(rule, rawaddr, host)
 	if err != nil {
 		if len(flora.ProxyServers.SrvCipherGroup) > 1 {
-			log.Printf("[%25s]\t\t➔\t\t[%10s]\t\t×\t\t[%40s] Failed connect to all avaiable shadowsocks server ", rule.Match, rule.Action, host)
+			log.Printf("[%s]➔[%s]×[%s] Failed connect to all avaiable shadowsocks server ", rule.Match, rule.Action, host)
 		}
 		return
 	}
