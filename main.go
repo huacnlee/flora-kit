@@ -3,22 +3,23 @@ package main
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
+	"flag"
 	"flora-kit/flora"
+	"fmt"
 	ss "github.com/shadowsocks/shadowsocks-go/shadowsocks"
 	"io"
 	"log"
 	"math/rand"
 	"net"
 	"strconv"
-	"time"
-	"flag"
 	"strings"
+	"time"
 )
 
 var debug ss.DebugLog
 
 var (
+	version          = "0.2.0"
 	errAddrType      = errors.New("socks addr type not supported")
 	errVer           = errors.New("socks version not supported")
 	errAuthExtraData = errors.New("socks authentication get extra data")
@@ -137,13 +138,13 @@ func getRequest(conn net.Conn) (rawaddr []byte, host string, err error) {
 
 	switch buf[idType] {
 	case typeIPv4:
-		host = net.IP(buf[idIP0: idIP0+net.IPv4len]).String()
+		host = net.IP(buf[idIP0 : idIP0+net.IPv4len]).String()
 	case typeIPv6:
-		host = net.IP(buf[idIP0: idIP0+net.IPv6len]).String()
+		host = net.IP(buf[idIP0 : idIP0+net.IPv6len]).String()
 	case typeDm:
-		host = string(buf[idDm0: idDm0+buf[idDmLen]])
+		host = string(buf[idDm0 : idDm0+buf[idDmLen]])
 	}
-	port := binary.BigEndian.Uint16(buf[reqLen-2: reqLen])
+	port := binary.BigEndian.Uint16(buf[reqLen-2 : reqLen])
 	host = net.JoinHostPort(host, strconv.Itoa(int(port)))
 
 	return
@@ -255,7 +256,7 @@ func main() {
 	flag.StringVar(&configFile, "s", "flora.default.conf", "specify surge config file")
 	flag.StringVar(&geoipdb, "d", "geoip.mmdb", "specify geoip db file")
 	flora.LoadConfig(configFile, geoipdb)
-	log.Println("Floar", flora.VERSION)
+	log.Println("Floar", version)
 	if flora.ProxyServers.LocalSocksPort > 0 {
 		run("0.0.0.0:" + fmt.Sprintf("%d", flora.ProxyServers.LocalSocksPort))
 	}

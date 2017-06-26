@@ -5,16 +5,15 @@ import (
 	"github.com/go-ini/ini"
 	ss "github.com/shadowsocks/shadowsocks-go/shadowsocks"
 	"log"
+	"math/rand"
 	"net"
 	"os"
 	"strconv"
 	"strings"
-	"math/rand"
 	"sync"
 )
 
 const (
-	VERSION     = "0.1.1"
 	SOCKS_PORT  = 1080
 	RULE_REJECT = "REJECT"
 	RULE_DIRECT = "DIRECT"
@@ -166,7 +165,7 @@ func loadProxyGroup() {
 		if nil != itf {
 			cnt = itf.(int)
 		}
-		cnt ++
+		cnt++
 		ProxyServers.failCipher.Set(name, cnt)
 		return cnt
 	}
@@ -282,7 +281,7 @@ func readArrayLine(source string) []string {
 	return out
 }
 
-func RuleOfHost(host string) (*HostRule) {
+func RuleOfHost(host string) *HostRule {
 	hostParts := strings.Split(host, ":")
 	domain := strings.ToLower(hostParts[0])
 	for _, rule := range ruleSuffixDomains {
