@@ -1,0 +1,20 @@
+# goreleaser.yml
+# Build customization
+build:
+  main: main.go
+  binary: flora-kit
+  goos:
+    - windows
+    - darwin
+    - linux
+  goarch:
+    - amd64
+# Archive customization
+archive:
+  format: tar.gz
+  replacements:
+    amd64: 64-bit
+    darwin: macOS
+  files:
+    README.md
+    LICENSE
