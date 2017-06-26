@@ -1,7 +1,7 @@
 package main_test
 
 import (
-	"github.com/huacnlee/flora-kit/flora"
+	"flora-kit/flora"
 	"testing"
 )
 

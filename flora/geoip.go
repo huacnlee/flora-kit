@@ -9,9 +9,8 @@ import (
 
 var geoDB *geoip2.Reader
 
-func loadGeoIP() {
-	file := "./geoip.mmdb"
-	db, err := geoip2.Open(file)
+func loadGeoIP(geofile string) {
+	db, err := geoip2.Open(geofile)
 	// defer db.Close()
 	if err != nil {
 		log.Printf("Could not open GeoIP database\n")

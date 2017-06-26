@@ -9,64 +9,79 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"math/rand"
+	"sync"
 )
 
 const (
 	VERSION     = "0.1.1"
-	SOCKS_PORT  = 7657
-	RULE_REJECT = 0
-	RULE_DIRECT = 1
-	RULE_PROXY  = 2
+	SOCKS_PORT  = 1080
+	RULE_REJECT = "REJECT"
+	RULE_DIRECT = "DIRECT"
 )
 
-type DomainRule struct {
-	S string
-	T int
+type HostRule struct {
+	Match  string
+	Action string
 }
 
-var ruleSuffixDomains = []*DomainRule{}
-var rulePrefixDomains = []*DomainRule{}
-var ruleKeywordDomains = []*DomainRule{}
-var ruleGeoIP = &DomainRule{}
-
-var ssConfig ss.Config
+var ruleSuffixDomains = []*HostRule{}
+var rulePrefixDomains = []*HostRule{}
+var ruleKeywordDomains = []*HostRule{}
+var ruleGeoIP = []*HostRule{}
+var ruleFinal *HostRule
+var failMapLock *sync.RWMutex
 var iniConfig *ini.File
-var debug ss.DebugLog
 
 type ProxyServerCipher struct {
-	Server string
-	Cipher *ss.Cipher
+	ProxyType         string
+	Server            string
+	Effective         bool
+	ShadowSocksCipher *ss.Cipher
+}
+
+type ProxyConfig struct {
+	Name              string
+	Type              string
+	ShadowSocksConfig []string
 }
 
 var ProxyServers struct {
-	SrvCipher []*ProxyServerCipher
-	FailCnt   []int // failed connection count
+	ListenAddress  string
+	LocalSocksPort int
+	SrvCipher      map[string]*ProxyServerCipher
+	SrvCipherGroup map[string][]*ProxyServerCipher
+	GetCipher      func(name string) *ProxyServerCipher
+	FailCipher     func(name string) int
+	failCipher     *SyncMap // failed connection count
 }
 
-func init() {
-	var configFilename = "./flora.default.conf"
-	var userConfigFilename = "./flora.user.conf"
+func LoadConfig(cfgFile string, geoFile string) {
+	sep := string(os.PathSeparator)
+	pwd, _ := os.Getwd()
+
+	var defaultCfgName = strings.Join([]string{pwd, "flora.default.conf"}, sep)
+	var userConfigFilename = strings.Join([]string{pwd, "flora.user.conf"}, sep)
+	var geoFilename = geoFile
+	var err error
+	if _, err := os.Stat(geoFilename); nil != err && os.IsNotExist(err) {
+		geoFilename = strings.Join([]string{pwd, "geoip.mmdb"}, sep)
+	}
 	var iniOpts = ini.LoadOptions{
 		AllowBooleanKeys: true,
 		Loose:            true,
 		Insensitive:      true,
 	}
-	cfg, err := ini.LoadSources(iniOpts, configFilename, userConfigFilename)
+	iniConfig, err = ini.LoadSources(iniOpts, cfgFile, defaultCfgName, userConfigFilename)
 
 	if err != nil {
-		panic(fmt.Sprintf("Config file %v not found, or have error: \n\t%v", configFilename, err))
+		panic(fmt.Sprintf("Config file %v not found, or have error: \n\t%v", geoFile, err))
 	}
-	iniConfig = cfg
-
-	loadGeoIP()
+	loadProxyGroup()
+	loadGeoIP(geoFilename)
 	loadGeneral()
-	loadProxy()
 	loadRules()
-
 	SetSocksFirewallProxy()
-
-	debug.Println("104.244.42.129", GeoIPString("104.244.42.129"))
-	debug.Println(RuleOfHost("www.twitter.com"))
 }
 
 // [General] section
@@ -80,74 +95,183 @@ func loadGeneral() {
 	if section.HasKey("bypass-tun") {
 		bypassDomains = append(bypassDomains, readArrayLine(section.Key("bypass-tun").String())...)
 	}
+	if section.HasKey("socks-port") {
+		port, err := strconv.Atoi(section.Key("socks-port").String())
+		if nil != err {
+			port = SOCKS_PORT
+		} else {
+			ProxyServers.LocalSocksPort = port
+		}
+	}
+	if section.Haskey("interface") {
+		ipStr := section.Key("interface").String()
+		addr := net.ParseIP(ipStr)
+		if nil == addr {
+			ProxyServers.ListenAddress = "127.0.0.1"
+		} else {
+			ProxyServers.ListenAddress = ipStr
+		}
+	}
 	SetProxyBypassDomains(bypassDomains)
 }
 
 // [Proxy] Section
-func loadProxy() {
-	ssConfig.LocalPort = SOCKS_PORT
-	for _, key := range iniConfig.Section("Proxy").Keys() {
-		var proxys = readArrayLine(key.String())
-		// ShadowSocks Proxys
-		if proxys[0] == "custom" || proxys[0] == "shadowsocks" {
-			var server = strings.Join(proxys[1:3], ":")
-			var serverInfo = []string{server, proxys[4], proxys[3]}
-			ssConfig.ServerPassword = append(ssConfig.ServerPassword, serverInfo)
+func loadProxy() map[string]ProxyConfig {
+	serverMapping := make(map[string]ProxyConfig)
+	section := iniConfig.Section("Proxy")
+	for _, name := range section.KeyStrings() {
+		v, _ := section.GetKey(name)
+		var proxyStrCfg = readArrayLine(v.String())
+		var proxy = ProxyConfig{Type: proxyStrCfg[0], Name: name}
+		// ShadowSocks Proxy
+		if len(proxyStrCfg) > 0 && (proxyStrCfg[0] == "custom" || proxyStrCfg[0] == "shadowsocks") {
+			//[ip:port,password,method]
+			var server = strings.Join(proxyStrCfg[1:3], ":")
+			var serverInfo = []string{server, proxyStrCfg[4], proxyStrCfg[3]}
+			proxy.ShadowSocksConfig = serverInfo
 		}
+		serverMapping[name] = proxy
+	}
+	return serverMapping
+}
+
+//[Proxy Group] Section
+func loadProxyGroup() {
+	const maxFailCnt = 30
+	srvCipherMap := initProxyServerConfig()
+	section := iniConfig.Section("Proxy Group")
+	ProxyServers.SrvCipherGroup = make(map[string][]*ProxyServerCipher)
+	for _, key := range section.KeyStrings() {
+		v, _ := section.GetKey(key)
+		groupName := strings.ToUpper(key)
+		proxyArr := readArrayLine(v.String())
+		proxyItems := make([]*ProxyServerCipher, len(proxyArr)-1)
+		//🚀 Proxy = select, 🌞 Line
+		if len(proxyArr) > 1 {
+			for i, p := range proxyArr[1:] {
+				proxyName := strings.ToUpper(p)
+				proxyItems[i] = srvCipherMap[proxyName]
+			}
+		}
+		ProxyServers.SrvCipherGroup[groupName] = proxyItems
 	}
 
-	if ssConfig.Method == "" {
-		ssConfig.Method = "aes-256-cfb"
-	}
-	if len(ssConfig.ServerPassword) == 0 {
-		if !enoughSSOptions(&ssConfig) {
-			fmt.Fprintln(os.Stderr, "must specify server address, password and both server/local port")
-			os.Exit(1)
+	ProxyServers.SrvCipher = srvCipherMap
+	ProxyServers.failCipher = NewSyncMap()
+	ProxyServers.FailCipher = func(name string) int {
+		var cnt int
+		failMapLock.Lock()
+		itf := ProxyServers.failCipher.Get(name)
+		defer failMapLock.Unlock()
+		if nil != itf {
+			cnt = itf.(int)
 		}
-	} else {
-		if ssConfig.LocalPort == 0 {
-			fmt.Fprintln(os.Stderr, "must specify local port")
-			os.Exit(1)
-		}
+		cnt ++
+		ProxyServers.failCipher.Set(name, cnt)
+		return cnt
 	}
 
-	parseServerConfig()
+	ProxyServers.GetCipher = func(name string) *ProxyServerCipher {
+		var cnt int
+		itf := ProxyServers.failCipher.Get(name)
+		if nil != itf {
+			cnt = itf.(int)
+			if cnt >= maxFailCnt {
+				log.Printf("Proxy Server [%s] connect exceeds the maximum number of failures ", name)
+				os.Exit(1)
+			}
+		}
+
+		svrCipher, ok := ProxyServers.SrvCipher[name]
+		if !ok {
+			group := ProxyServers.SrvCipherGroup[name]
+			eff := []*ProxyServerCipher{}
+			for _, s := range group {
+				e := s.Effective
+				if e {
+					eff = append(eff, s)
+				}
+			}
+			return eff[rand.Intn(len(eff))]
+		}
+		return svrCipher
+	}
+}
+
+func initProxyServerConfig() map[string]*ProxyServerCipher {
+	hasPort := func(s string) bool {
+		_, port, err := net.SplitHostPort(s)
+		if err != nil {
+			return false
+		}
+		return port != ""
+	}
+	proxySvrs := loadProxy()
+	cipherCache := make(map[string]*ProxyServerCipher)
+	for key, val := range proxySvrs {
+		svrName := strings.ToUpper(strings.TrimSpace(key))
+		serverCipher := ProxyServerCipher{ProxyType: val.Type, Effective: true}
+		if val.Type == "custom" || val.Type == "shadowsocks" {
+			serverInfo := val.ShadowSocksConfig
+			server := serverInfo[0]
+			passwd := serverInfo[1]
+			encmethod := ""
+			if len(serverInfo) == 3 {
+				encmethod = serverInfo[2]
+			}
+			if !hasPort(server) {
+				log.Printf("no port for server %s\n", server)
+				ProxyServers.failCipher.Set(svrName, 0)
+				continue
+			}
+			cipher, err := ss.NewCipher(encmethod, passwd)
+			if err != nil {
+				log.Printf("Failed generating ciphers %s\n", err)
+				ProxyServers.failCipher.Set(svrName, 0)
+				continue
+			}
+			serverCipher.Server = server
+			serverCipher.ShadowSocksCipher = cipher
+		}
+		cipherCache[svrName] = &serverCipher
+	}
+	return cipherCache
 }
 
 // 载入 [Rule]
 func loadRules() {
 	for _, key := range iniConfig.Section("Rule").KeyStrings() {
-		var items = readArrayLine(key)
-		var ruleType = RULE_DIRECT
+		if strings.HasPrefix(key, "//") {
+			continue
+		}
+		var (
+			items    = readArrayLine(key)
+			ruleType string
+		)
 		if len(items) >= 3 {
 			switch items[2] {
-			case "proxy":
-				ruleType = RULE_PROXY
 			case "direct":
 				ruleType = RULE_DIRECT
 			case "reject":
 				ruleType = RULE_REJECT
 			default:
-				ruleType = RULE_DIRECT
+				ruleType = strings.ToUpper(items[2])
 			}
 		}
-
-		switch items[0] {
+		ruleName := strings.ToLower(items[0])
+		switch ruleName {
 		case "domain-suffix":
-			ruleSuffixDomains = append(ruleSuffixDomains, &DomainRule{S: items[1], T: ruleType})
+			ruleSuffixDomains = append(ruleSuffixDomains, &HostRule{Match: items[1], Action: ruleType})
 		case "domain-prefix":
-			rulePrefixDomains = append(rulePrefixDomains, &DomainRule{S: items[1], T: ruleType})
+			rulePrefixDomains = append(rulePrefixDomains, &HostRule{Match: items[1], Action: ruleType})
 		case "domain-keyword":
-			ruleKeywordDomains = append(ruleKeywordDomains, &DomainRule{S: items[1], T: ruleType})
+			ruleKeywordDomains = append(ruleKeywordDomains, &HostRule{Match: items[1], Action: ruleType})
 		case "geoip":
-			ruleGeoIP = &DomainRule{S: items[1], T: ruleType}
+			ruleGeoIP = append(ruleGeoIP, &HostRule{Match: items[1], Action: ruleType})
+		case "final":
+			ruleFinal = &HostRule{Match: "final", Action: strings.ToUpper(items[1])}
 		}
 	}
-}
-
-func enoughSSOptions(config *ss.Config) bool {
-	return config.Server != nil && config.ServerPort != 0 &&
-		config.LocalPort != 0 && config.Password != ""
 }
 
 func readArrayLine(source string) []string {
@@ -158,119 +282,55 @@ func readArrayLine(source string) []string {
 	return out
 }
 
-func RuleOfHost(host string) (result *DomainRule) {
-	result = &DomainRule{S: "", T: RULE_DIRECT}
+func RuleOfHost(host string) (*HostRule) {
 	hostParts := strings.Split(host, ":")
-	domain := hostParts[0]
-
+	domain := strings.ToLower(hostParts[0])
 	for _, rule := range ruleSuffixDomains {
-		if strings.HasSuffix(domain, rule.S) {
-			result = rule
-			return
+		if strings.HasSuffix(domain, rule.Match) {
+			return rule
 		}
 	}
-
 	for _, rule := range rulePrefixDomains {
-		if strings.HasPrefix(domain, rule.S) {
-			result = rule
-			return
+		if strings.HasPrefix(domain, rule.Match) {
+			return rule
 		}
 	}
 
 	for _, rule := range ruleKeywordDomains {
-		if strings.Contains(domain, rule.S) {
-			result = rule
-			return
+		if strings.Contains(domain, rule.Match) {
+			return rule
 		}
 	}
-
-	ips, err := net.LookupIP(host)
-	if err != nil || len(ips) == 0 {
-		return
+	ips := resolveRequestIPAddr(host)
+	if nil != ips {
+		country := strings.ToLower(GeoIPs(ips))
+		log.Println("Found ip geo", country)
+		for _, rule := range ruleGeoIP {
+			if len(country) != 0 && strings.ToLower(rule.Match) == country {
+				return rule
+			}
+		}
 	}
-
-	country := GeoIPs(ips)
-	log.Println("Found ip geo", country)
-	if len(country) != 0 && ruleGeoIP.S == country {
-		result = ruleGeoIP
-		return
+	if nil != ruleFinal {
+		return ruleFinal
+	} else {
+		return &HostRule{Match: "", Action: RULE_DIRECT}
 	}
-
-	return
 }
 
-func parseServerConfig() {
-	config := ssConfig
-	hasPort := func(s string) bool {
-		_, port, err := net.SplitHostPort(s)
-		if err != nil {
-			return false
-		}
-		return port != ""
-	}
-
-	if len(config.ServerPassword) == 0 {
-		method := config.Method
-		if config.Auth {
-			method += "-auth"
-		}
-		// only one encryption table
-		cipher, err := ss.NewCipher(method, config.Password)
-		if err != nil {
-			log.Fatal("Failed generating ciphers:", err)
-		}
-		srvPort := strconv.Itoa(config.ServerPort)
-		srvArr := config.GetServerArray()
-		n := len(srvArr)
-		ProxyServers.SrvCipher = make([]*ProxyServerCipher, n)
-
-		for i, s := range srvArr {
-			if hasPort(s) {
-				log.Println("ignore server_port option for server", s)
-				ProxyServers.SrvCipher[i] = &ProxyServerCipher{s, cipher}
-			} else {
-				ProxyServers.SrvCipher[i] = &ProxyServerCipher{net.JoinHostPort(s, srvPort), cipher}
-			}
+func resolveRequestIPAddr(host string) []net.IP {
+	var (
+		ips []net.IP
+		err error
+	)
+	ip := net.ParseIP(host)
+	if nil == ip {
+		ips, err = net.LookupIP(host)
+		if err != nil || len(ips) == 0 {
+			return nil
 		}
 	} else {
-		// multiple servers
-		n := len(config.ServerPassword)
-		ProxyServers.SrvCipher = make([]*ProxyServerCipher, n)
-
-		cipherCache := make(map[string]*ss.Cipher)
-		i := 0
-		for _, serverInfo := range config.ServerPassword {
-			if len(serverInfo) < 2 || len(serverInfo) > 3 {
-				log.Fatalf("server %v syntax error\n", serverInfo)
-			}
-			server := serverInfo[0]
-			passwd := serverInfo[1]
-			encmethod := ""
-			if len(serverInfo) == 3 {
-				encmethod = serverInfo[2]
-			}
-			if !hasPort(server) {
-				log.Fatalf("no port for server %s\n", server)
-			}
-			// Using "|" as delimiter is safe here, since no encryption
-			// method contains it in the name.
-			cacheKey := encmethod + "|" + passwd
-			cipher, ok := cipherCache[cacheKey]
-			if !ok {
-				var err error
-				cipher, err = ss.NewCipher(encmethod, passwd)
-				if err != nil {
-					log.Fatal("Failed generating ciphers:", err)
-				}
-				cipherCache[cacheKey] = cipher
-			}
-			ProxyServers.SrvCipher[i] = &ProxyServerCipher{server, cipher}
-			i++
-		}
+		ips = []net.IP{ip}
 	}
-	ProxyServers.FailCnt = make([]int, len(ProxyServers.SrvCipher))
-	for _, se := range ProxyServers.SrvCipher {
-		debug.Println("available remote server", se.Server)
-	}
-	return
+	return ips
 }
