@@ -9,6 +9,11 @@ build:
     - linux
   goarch:
     - amd64
+  ldflags: -s -w
+release:
+  github:
+    owner: huacnlee
+    name: flora-kit
 # Archive customization
 archive:
   format: tar.gz
