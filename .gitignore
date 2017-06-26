@@ -30,3 +30,4 @@ flora-kit
 release/
 *.tar.*
 .idea
+dist/

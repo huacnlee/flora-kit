@@ -23,3 +23,5 @@ archive:
   files:
     README.md
     LICENSE
+    flora.default.conf
+    geoip.mmdb
