@@ -21,8 +21,8 @@ archive:
     amd64: 64-bit
     darwin: macOS
   files:
-    README.md
-    LICENSE
-    CHANGELOG.md
-    flora.default.conf
-    geoip.mmdb
+    - README.md
+    - LICENSE
+    - CHANGELOG.md
+    - flora.default.conf
+    - geoip.mmdb

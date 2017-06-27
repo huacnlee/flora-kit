@@ -19,7 +19,7 @@ import (
 var debug ss.DebugLog
 
 var (
-	version          = "0.2.1"
+	version          = "0.2.2"
 	errAddrType      = errors.New("socks addr type not supported")
 	errVer           = errors.New("socks version not supported")
 	errAuthExtraData = errors.New("socks authentication get extra data")
