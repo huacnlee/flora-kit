@@ -30,9 +30,21 @@ https://github.com/huacnlee/flora-kit/releases
 
 > NOTE: 由于启动的时候，需要修改系统的网络配置，所以你需要用 sudo 来执行:
 
-```bash
-cd flora
-sudo ./flora
+#### macOS
+```
+$ cd flora
+$ sudo ./flora
+```
+
+#### Linux
+```
+$ cd flora
+$ ./flora
+```
+
+#### Windows
+```
+flora.bat
 ```
 
 ## License
