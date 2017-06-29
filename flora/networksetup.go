@@ -31,7 +31,7 @@ func ResetAllProxys() {
 
 func SetSocksFirewallProxy() {
 	execNetworks(func(name string) {
-		runNetworksetup("-setsocksfirewallproxy", name, "127.0.0.1", fmt.Sprintf("%d", SOCKS_PORT))
+		runNetworksetup("-setsocksfirewallproxy", name, "127.0.0.1", fmt.Sprintf("%d", DEFAULT_SOCKS_PORT))
 	})
 }
 
