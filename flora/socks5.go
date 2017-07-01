@@ -6,17 +6,47 @@ import (
 	"strconv"
 	ss "github.com/shadowsocks/shadowsocks-go/shadowsocks"
 	"encoding/binary"
+	"log"
 )
 
-const(
-	typeIPv4 = 1 // type is ipv4 address
-	typeDm   = 3 // type is domain address
-	typeIPv6 = 4 // type is ipv6 address
-)
+/*
+socks5 protocol
 
+initial
+
+byte | 0  |   1    | 2 | ...... | n |
+     |0x05|num auth|  auth methods  |
+
+
+reply
+
+byte | 0  |  1  |
+     |0x05| auth|
+
+
+username/password auth request
+
+byte | 0  |  1         |          |     1 byte   |          |
+     |0x01|username_len| username | password_len | password |
+
+username/password auth reponse
+
+byte | 0  | 1    |
+     |0x01|status|
+
+request
+
+byte | 0  | 1 | 2  |   3    | 4 | .. | n-2 | n-1| n |
+     |0x05|cmd|0x00|addrtype|      addr    |  port  |
+
+response
+byte |0   |  1   | 2  |   3    | 4 | .. | n-2 | n-1 | n |
+     |0x05|status|0x00|addrtype|     addr     |  port   |
+
+*/
 
 //local socks server auth
-func socksAuth(conn net.Conn) (err error) {
+func handshake(conn net.Conn,first byte ) (err error) {
 	const (
 		idVer     = 0
 		idNmethod = 1
@@ -27,22 +57,24 @@ func socksAuth(conn net.Conn) (err error) {
 	// so it won't be such long in practice
 
 	buf := make([]byte, 258)
-
+	buf[idVer] = first
 	var n int
 	ss.SetReadTimeout(conn)
 	// make sure we get the nmethod field
-	if n, err = io.ReadAtLeast(conn, buf, idNmethod+1); err != nil {
+	if n, err = io.ReadAtLeast(conn, buf[1:], idNmethod+1); err != nil {
 		return
 	}
-	if buf[idVer] != socksVer5 {
-		return errVer
-	}
+	n ++
+	//if buf[idVer] != socksVer5 {
+	//	return errVer
+	//}
 	nmethod := int(buf[idNmethod])
 	msgLen := nmethod + 2
 	if n == msgLen { // handshake done, common case
 		// do nothing, jump directly to send confirmation
 	} else if n < msgLen { // has more methods to read, rare case
 		if _, err = io.ReadFull(conn, buf[n:msgLen]); err != nil {
+			log.Print(err)
 			return
 		}
 	} else { // error, should not get extra data
@@ -54,7 +86,7 @@ func socksAuth(conn net.Conn) (err error) {
 }
 
 // local socks server  connect
-func socksConnect(conn net.Conn) (host string,hostType int,  err error) {
+func socks5Connect(conn net.Conn) (host string, hostType int, err error) {
 	const (
 		idVer   = 0
 		idCmd   = 1
@@ -76,10 +108,10 @@ func socksConnect(conn net.Conn) (host string,hostType int,  err error) {
 		return
 	}
 	// check version and cmd
-	if buf[idVer] != socksVer5 {
-		err = errVer
-		return
-	}
+	//if buf[idVer] != socksVer5 {
+	//	err = errVer
+	//	return
+	//}
 	if buf[idCmd] != socksCmdConnect {
 		err = errCmd
 		return

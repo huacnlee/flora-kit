@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"regexp"
+	"io"
 )
 
 const (
@@ -22,7 +23,13 @@ const (
 	LocalServerHttp    = "localHttp"
 
 	socksVer5       = 5
+	socksVer4       = 4
+	httpProxy       = 71
 	socksCmdConnect = 1
+
+	typeIPv4 = 1 // type is ipv4 address
+	typeDm   = 3 // type is domain address
+	typeIPv6 = 4 // type is ipv6 address
 )
 
 type ProxyServer interface {
@@ -55,7 +62,7 @@ var (
 
 var proxyConfig *ProxyConfig
 
-func Run(surgeCfg, geoipCfg, localProxyType string) {
+func Run(surgeCfg, geoipCfg string) {
 	proxyConfig = LoadConfig(surgeCfg, geoipCfg)
 
 	listenAddr := fmt.Sprintf("%s:%d", proxyConfig.LocalHost, proxyConfig.LocalSocksPort)
@@ -71,11 +78,11 @@ func Run(surgeCfg, geoipCfg, localProxyType string) {
 			log.Println("accept:", err)
 			continue
 		}
-		go handleConnection(conn, localProxyType)
+		go handleConnection(conn)
 	}
 }
 
-func handleConnection(conn net.Conn, localProxyType string) {
+func handleConnection(conn net.Conn) {
 	isClose := false
 	defer func() {
 		if !isClose {
@@ -86,18 +93,27 @@ func handleConnection(conn net.Conn, localProxyType string) {
 		host     string
 		hostType int
 		err      error
+		rawData  []byte
 	)
-	if localProxyType == LocalServerSocksV5 {
-		err = socksAuth(conn)
-		host, hostType, err = socksConnect(conn)
-	} else if localProxyType == LocalServerHttp {
 
+	buf := make([]byte, 1)
+	io.ReadFull(conn, buf)
+
+	first := buf[0]
+	switch first {
+	case socksVer5:
+		err = handshake(conn, first)
+		host, hostType, err = socks5Connect(conn)
+	case socksVer4:
+		host, hostType, err = socks4Connect(conn, first)
+	default:
+		host, hostType, rawData, err = httpProxyConnect(conn, first)
 	}
+
 	if nil != err {
-		log.Fatal("local proxy server has error", err)
+		return
 	}
-
-	remote, err := matchRuleAndCreateConn(conn, host, hostType)
+	remote, err := matchRuleAndCreateConn(conn, host, hostType, rawData)
 	if nil != err {
 		return
 	}
@@ -112,18 +128,19 @@ func handleConnection(conn net.Conn, localProxyType string) {
 	isClose = true
 }
 
-func matchRuleAndCreateConn(conn net.Conn, host string, hostType int) (net.Conn, error) {
-	addArray := strings.Split(host, ":")
+func matchRuleAndCreateConn(conn net.Conn, addr string, hostType int, raw []byte) (net.Conn, error) {
+	if nil == conn{
+		return nil,errors.New("...")
+	}
+	host, _, _ := net.SplitHostPort(addr)
 	var rule *Rule
-	var raw []byte
-	rule = matchBypass(addArray[0])
-
+	rule = matchBypass(host)
 	if nil == rule {
 		switch hostType {
 		case typeIPv4, typeIPv6:
-			rule = matchIpRule(addArray[0])
+			rule = matchIpRule(host)
 		case typeDm:
-			rule = matchDomainRule(addArray[0])
+			rule = matchDomainRule(host)
 		}
 	}
 	if nil == rule {
@@ -133,7 +150,7 @@ func matchRuleAndCreateConn(conn net.Conn, host string, hostType int) (net.Conn,
 			rule = &Rule{Match: "default", Action: ServerTypeDirect}
 		}
 	}
-	return createRemoteConn(raw, rule, host)
+	return createRemoteConn(raw, rule, addr)
 }
 
 func matchDomainRule(domain string) (*Rule) {
@@ -159,7 +176,6 @@ func matchIpRule(addr string) (*Rule) {
 	ips := resolveRequestIPAddr(addr)
 	if nil != ips {
 		country := strings.ToLower(GeoIPs(ips))
-		log.Println("Found ip geo", country)
 		for _, rule := range proxyConfig.ruleGeoIP {
 			if len(country) != 0 && strings.ToLower(rule.Match) == country {
 				return rule
@@ -168,7 +184,6 @@ func matchIpRule(addr string) (*Rule) {
 	}
 	return nil
 }
-
 
 func matchBypass(addr string) (*Rule) {
 	ip := net.ParseIP(addr)
