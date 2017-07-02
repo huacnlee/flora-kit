@@ -14,7 +14,8 @@ Flora
 - 支持域名关键词、前缀、后缀匹配，制定 Direct 访问（白名单）或用 Proxy 访问（黑名单）；
 - 支持 IP 白名单，黑名单；
 - 支持 GeoIP 判断目标网站服务器所在区域，自动选择线路；
-- 启动的时候自动改变 macOS 网路代理配置，无需手工调整；
+- 启动的时候自动改变 macOS,windows 网路代理配置，无需手工调整；
+
 
 ## TODO
 
@@ -30,9 +31,21 @@ https://github.com/huacnlee/flora-kit/releases
 
 > NOTE: 由于启动的时候，需要修改系统的网络配置，所以你需要用 sudo 来执行:
 
-```bash
-cd flora
-sudo ./flora
+#### macOS
+```
+$ cd flora
+$ sudo ./flora
+```
+
+#### Linux
+```
+$ cd flora
+$ ./flora
+```
+
+#### Windows
+```
+flora.exe
 ```
 
 ## License

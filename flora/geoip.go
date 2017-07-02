@@ -9,9 +9,8 @@ import (
 
 var geoDB *geoip2.Reader
 
-func loadGeoIP() {
-	file := "./geoip.mmdb"
-	db, err := geoip2.Open(file)
+func loadGeoIP(geoFile string) {
+	db, err := geoip2.Open(geoFile)
 	// defer db.Close()
 	if err != nil {
 		log.Printf("Could not open GeoIP database\n")
@@ -40,4 +39,21 @@ func GeoIP(ip net.IP) string {
 		return ""
 	}
 	return strings.ToLower(country.Country.IsoCode)
+}
+
+func resolveRequestIPAddr(host string) []net.IP {
+	var (
+		ips []net.IP
+		err error
+	)
+	ip := net.ParseIP(host)
+	if nil == ip {
+		ips, err = net.LookupIP(host)
+		if err != nil || len(ips) == 0 {
+			return nil
+		}
+	} else {
+		ips = []net.IP{ip}
+	}
+	return ips
 }

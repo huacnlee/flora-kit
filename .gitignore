@@ -29,3 +29,5 @@ flora-kit
 *.log
 release/
 *.tar.*
+.idea
+dist/

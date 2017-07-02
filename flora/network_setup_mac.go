@@ -2,22 +2,22 @@ package flora
 
 import (
 	"bytes"
-	"fmt"
 	"log"
 	"os/exec"
-	"runtime"
 	"strings"
+	"net"
 )
+
+type darwin struct {
+	bypassDomains []string
+	address       string
+}
 
 type execNetworkFunc func(name string)
 
 var allow_services = "Wi-Fi|Thunderbolt Bridge|Thunderbolt Ethernet"
 
-func ResetAllProxys() {
-	if runtime.GOOS != "darwin" {
-		log.Println("WARN: Your not in macOS, Networksetup skiped. Please change Network proxy setting by manually.")
-	}
-
+func (d *darwin) TurnOffGlobProxy() {
 	execNetworks(func(name string) {
 		runNetworksetup("-setftpproxystate", name, "off")
 		runNetworksetup("-setwebproxystate", name, "off")
@@ -29,24 +29,21 @@ func ResetAllProxys() {
 	})
 }
 
-func SetSocksFirewallProxy() {
-	execNetworks(func(name string) {
-		runNetworksetup("-setsocksfirewallproxy", name, "127.0.0.1", fmt.Sprintf("%d", SOCKS_PORT))
-	})
-}
+func (d *darwin) TurnOnGlobProxy() {
+	host, port, _ := net.SplitHostPort(d.address)
 
-func SetProxyBypassDomains(domains []string) {
+	execNetworks(func(name string) {
+		runNetworksetup("-setsocksfirewallproxy", name, host, port)
+	})
+
 	execNetworks(func(name string) {
 		args := []string{"-setproxybypassdomains", name}
-		args = append(args, domains...)
+		args = append(args, d.bypassDomains...)
 		runNetworksetup(args...)
 	})
 }
 
 func runNetworksetup(args ...string) string {
-	if runtime.GOOS != "darwin" {
-		return ""
-	}
 
 	// log.Println("networksetup", args)
 	cmd := exec.Command("networksetup", args...)
