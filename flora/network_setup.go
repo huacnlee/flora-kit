@@ -21,7 +21,9 @@ func resetProxySettings(proxySettings SystemProxySettings) {
 		select {
 		case <-sigs:
 			log.Print("Flora-kit is shutdown now ...")
-			proxySettings.TurnOffGlobProxy()
+			if nil != proxySettings{
+				proxySettings.TurnOffGlobProxy()
+			}
 			time.Sleep(time.Duration(2000))
 			os.Exit(0)
 		}
@@ -38,6 +40,8 @@ func initProxySettings(bypass []string, addr string)  {
 		d := &darwin{bypass,addr}
 		proxySettings = d
 	}
-	proxySettings.TurnOnGlobProxy()
+	if nil != proxySettings{
+		proxySettings.TurnOnGlobProxy()
+	}
 	go resetProxySettings(proxySettings)
 }
