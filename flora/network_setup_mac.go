@@ -24,7 +24,7 @@ func (d *darwin) TurnOffGlobProxy() {
 		runNetworksetup("-setsecurewebproxystate", name, "off")
 		runNetworksetup("-setstreamingproxystate", name, "off")
 		runNetworksetup("-setgopherproxystate", name, "off")
-		runNetworksetup("-setsocksfirewallproxystate", name, "on")
+		runNetworksetup("-setsocksfirewallproxystate", name, "off")
 		runNetworksetup("-setproxyautodiscovery", name, "off")
 	})
 }
