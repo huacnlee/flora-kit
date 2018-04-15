@@ -1,11 +1,10 @@
 package main
 
 import (
-	"flora-kit/flora"
 	"flag"
+
+	"github.com/huacnlee/flora-kit/flora"
 )
-
-
 
 func main() {
 	var configFile, geoipdb string
