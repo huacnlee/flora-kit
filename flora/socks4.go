@@ -1,10 +1,10 @@
 package flora
 
 import (
-	"io"
-	"net"
 	"encoding/binary"
 	"fmt"
+	"io"
+	"net"
 )
 
 /*
@@ -32,7 +32,7 @@ byte | 0  |  1  | 2 | 3 | 4 | 5 | 6| 7 |
 */
 
 // local socks server  connect
-func socks4Connect(conn net.Conn,first byte ) (addr string, hostType int, err error) {
+func socks4Connect(conn net.Conn, first byte) (addr string, hostType int, err error) {
 	const (
 		idVer     = 0
 		idStatus  = 1
@@ -53,16 +53,16 @@ func socks4Connect(conn net.Conn,first byte ) (addr string, hostType int, err er
 	if n, err = io.ReadAtLeast(conn, buf[1:], id4aFixLen); err != nil {
 		return
 	}
-	n ++
+	n++
 	// command only support connect
 	if buf[idStatus] != cmdConnect {
 		return
 	}
 	// get port
-	port := binary.BigEndian.Uint16(buf[idPort:idPort+idPortLen])
+	port := binary.BigEndian.Uint16(buf[idPort : idPort+idPortLen])
 
 	// get ip
-	ip := net.IP(buf[idIP:idIP+idIPLen])
+	ip := net.IP(buf[idIP : idIP+idIPLen])
 	hostType = typeIPv4
 	var host = ip.String()
 

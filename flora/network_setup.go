@@ -1,11 +1,11 @@
 package flora
 
 import (
-	"os/signal"
-	"syscall"
-	"os"
 	"log"
+	"os"
+	"os/signal"
 	"runtime"
+	"syscall"
 	"time"
 )
 
@@ -21,7 +21,7 @@ func resetProxySettings(proxySettings SystemProxySettings) {
 		select {
 		case <-sigs:
 			log.Print("Flora-kit is shutdown now ...")
-			if nil != proxySettings{
+			if nil != proxySettings {
 				proxySettings.TurnOffGlobProxy()
 			}
 			time.Sleep(time.Duration(2000))
@@ -30,17 +30,17 @@ func resetProxySettings(proxySettings SystemProxySettings) {
 	}
 }
 
-func initProxySettings(bypass []string, addr string)  {
+func initProxySettings(bypass []string, addr string) {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	var proxySettings SystemProxySettings
 	if runtime.GOOS == "windows" {
 		w := &windows{addr}
 		proxySettings = w
 	} else if runtime.GOOS == "darwin" {
-		d := &darwin{bypass,addr}
+		d := &darwin{bypass, addr}
 		proxySettings = d
 	}
-	if nil != proxySettings{
+	if nil != proxySettings {
 		proxySettings.TurnOnGlobProxy()
 	}
 	go resetProxySettings(proxySettings)

@@ -1,8 +1,8 @@
 package flora
 
 import (
-	"os/exec"
 	"log"
+	"os/exec"
 )
 
 type windows struct {
@@ -10,13 +10,13 @@ type windows struct {
 }
 
 const (
-	cmdRegistry                 = `reg`
-	cmdRegistryAdd              = `add`
-	internetSettingsKey         = `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Internet Settings`
-	keyProxyEnable              = `ProxyEnable`
-	keyProxyServer              = `ProxyServer`
-	dataTypeDWord               = `REG_DWORD`
-	dataTypeRegSZ               = `REG_SZ`
+	cmdRegistry         = `reg`
+	cmdRegistryAdd      = `add`
+	internetSettingsKey = `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Internet Settings`
+	keyProxyEnable      = `ProxyEnable`
+	keyProxyServer      = `ProxyServer`
+	dataTypeDWord       = `REG_DWORD`
+	dataTypeRegSZ       = `REG_SZ`
 )
 
 func (w *windows) TurnOnGlobProxy() {
@@ -41,7 +41,7 @@ func (w *windows) TurnOffGlobProxy() {
 	if _, err = c.CombinedOutput(); err != nil {
 		log.Printf("disable windows proxy has error %s", err)
 	}
-	if nil == err{
+	if nil == err {
 		log.Print("disable windows proxy settings  are successful ...")
 	}
 }

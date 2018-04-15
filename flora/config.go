@@ -2,14 +2,15 @@ package flora
 
 import (
 	"fmt"
-	"github.com/go-ini/ini"
-	ss "github.com/shadowsocks/shadowsocks-go/shadowsocks"
 	"log"
+	"math/rand"
 	"net"
 	"os"
 	"strconv"
 	"strings"
-	"math/rand"
+
+	"github.com/go-ini/ini"
+	ss "github.com/shadowsocks/shadowsocks-go/shadowsocks"
 )
 
 const (
@@ -38,7 +39,7 @@ type proxyGroup struct {
 	proxyServers []ProxyServer
 }
 
-func LoadConfig(cfgFile string, geoFile string) (*ProxyConfig) {
+func LoadConfig(cfgFile string, geoFile string) *ProxyConfig {
 	proxyConfig := ProxyConfig{}
 	var iniOpts = ini.LoadOptions{
 		AllowBooleanKeys: true,
@@ -148,7 +149,7 @@ func loadProxy(config *ProxyConfig) {
 
 }
 
-func (c *ProxyConfig) GetProxyServer(action string) (ProxyServer) {
+func (c *ProxyConfig) GetProxyServer(action string) ProxyServer {
 	const maxFailCnt = 30
 	var server ProxyServer
 	var ok bool

@@ -6,7 +6,7 @@ type DirectServer struct {
 	proxyType string
 }
 
-func NewDirect() (*DirectServer) {
+func NewDirect() *DirectServer {
 	return &DirectServer{proxyType: ServerTypeDirect}
 }
 
@@ -14,7 +14,7 @@ func (s *DirectServer) FailCount() int {
 	return 0
 }
 
-func (s *DirectServer) ResetFailCount()  {
+func (s *DirectServer) ResetFailCount() {
 
 }
 
@@ -28,10 +28,10 @@ func (s *DirectServer) ProxyType() string {
 
 func (s *DirectServer) DialWithRawAddr(raw []byte, host string) (remote net.Conn, err error) {
 	conn, err := net.Dial("tcp", host)
-	if nil != err{
-		return nil,err
+	if nil != err {
+		return nil, err
 	}
-	if  nil != raw && len(raw) > 0 {
+	if nil != raw && len(raw) > 0 {
 		conn.Write(raw)
 	}
 	return conn, err

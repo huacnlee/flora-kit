@@ -6,7 +6,7 @@ type Reject struct {
 	proxyType string
 }
 
-func NewReject() (*Reject) {
+func NewReject() *Reject {
 	return &Reject{proxyType: ServerTypeReject}
 }
 

@@ -1,11 +1,11 @@
 package flora
 
 import (
-	"net"
-	"io"
-	"net/http"
 	"bufio"
 	"bytes"
+	"io"
+	"net"
+	"net/http"
 	"net/http/httputil"
 )
 
@@ -50,15 +50,14 @@ func httpProxyConnect(conn net.Conn, first byte) (addr string, hostType int, raw
 	return
 }
 
-func getRequestType(addr string) int  {
-	host,_,_ := net.SplitHostPort(addr)
+func getRequestType(addr string) int {
+	host, _, _ := net.SplitHostPort(addr)
 	ip := net.ParseIP(host)
 	if nil != ip {
 		return typeIPv4
 	}
 	return typeDm
 }
-
 
 func removeHeaders(req *http.Request) {
 	req.RequestURI = ""

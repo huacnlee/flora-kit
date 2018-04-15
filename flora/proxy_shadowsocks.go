@@ -1,8 +1,8 @@
 package flora
 
 import (
-	"net"
 	ss "github.com/shadowsocks/shadowsocks-go/shadowsocks"
+	"net"
 	"sync"
 )
 
@@ -14,7 +14,7 @@ type ShadowSocksServer struct {
 	lock      sync.RWMutex
 }
 
-func NewShadowSocks(server string, cipher *ss.Cipher) (*ShadowSocksServer) {
+func NewShadowSocks(server string, cipher *ss.Cipher) *ShadowSocksServer {
 	return &ShadowSocksServer{
 		proxyType: ServerTypeShadowSocks,
 		server:    server,
@@ -29,7 +29,7 @@ func (s *ShadowSocksServer) ResetFailCount() {
 }
 
 func (s *ShadowSocksServer) AddFail() {
-	s.failCount ++
+	s.failCount++
 }
 
 func (s *ShadowSocksServer) FailCount() int {

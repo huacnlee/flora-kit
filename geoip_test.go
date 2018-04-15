@@ -2,8 +2,8 @@ package main_test
 
 import (
 	"flora-kit/flora"
-	"testing"
 	"os"
+	"testing"
 )
 
 func TestGeoIP(t *testing.T) {
