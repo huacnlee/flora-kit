@@ -1,14 +1,15 @@
 package flora
 
 import (
-	ss "github.com/shadowsocks/shadowsocks-go/shadowsocks"
-	"net"
 	"errors"
-	"log"
 	"fmt"
-	"strings"
-	"regexp"
 	"io"
+	"log"
+	"net"
+	"regexp"
+	"strings"
+
+	ss "github.com/shadowsocks/shadowsocks-go/shadowsocks"
 )
 
 const (
@@ -62,11 +63,10 @@ var (
 
 var proxyConfig *ProxyConfig
 
-
 func Run(surgeCfg, geoipCfg string) {
 	proxyConfig = LoadConfig(surgeCfg, geoipCfg)
 	listenAddr := fmt.Sprintf("%s:%d", proxyConfig.LocalHost, proxyConfig.LocalSocksPort)
-	initProxySettings(proxyConfig.systemBypass,listenAddr)
+	initProxySettings(proxyConfig.systemBypass, listenAddr)
 	ln, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		log.Fatal(err)
@@ -122,8 +122,8 @@ func handleConnection(conn net.Conn) {
 			remote.Close()
 		}
 	}()
-	go ss.PipeThenClose(conn, remote)
-	ss.PipeThenClose(remote, conn)
+	go ss.PipeThenClose(conn, remote, nil)
+	ss.PipeThenClose(remote, conn, nil)
 	isClose = true
 }
 
@@ -152,7 +152,7 @@ func matchRuleAndCreateConn(conn net.Conn, addr string, hostType int, raw []byte
 	return createRemoteConn(raw, rule, addr)
 }
 
-func matchDomainRule(domain string) (*Rule) {
+func matchDomainRule(domain string) *Rule {
 	for _, rule := range proxyConfig.ruleSuffixDomains {
 		if strings.HasSuffix(domain, rule.Match) {
 			return rule
@@ -171,7 +171,7 @@ func matchDomainRule(domain string) (*Rule) {
 	return nil
 }
 
-func matchIpRule(addr string) (*Rule) {
+func matchIpRule(addr string) *Rule {
 	ips := resolveRequestIPAddr(addr)
 	if nil != ips {
 		country := strings.ToLower(GeoIPs(ips))
@@ -184,7 +184,7 @@ func matchIpRule(addr string) (*Rule) {
 	return nil
 }
 
-func matchBypass(addr string) (*Rule) {
+func matchBypass(addr string) *Rule {
 	ip := net.ParseIP(addr)
 	for _, h := range proxyConfig.bypassDomains {
 		var bypass bool = false
