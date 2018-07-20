@@ -1,12 +1,12 @@
 package flora
 
 import (
+	"encoding/binary"
+	ss "github.com/shadowsocks/shadowsocks-go/shadowsocks"
 	"io"
+	"log"
 	"net"
 	"strconv"
-	ss "github.com/shadowsocks/shadowsocks-go/shadowsocks"
-	"encoding/binary"
-	"log"
 )
 
 /*
@@ -46,7 +46,7 @@ byte |0   |  1   | 2  |   3    | 4 | .. | n-2 | n-1 | n |
 */
 
 //local socks server auth
-func handshake(conn net.Conn,first byte ) (err error) {
+func handshake(conn net.Conn, first byte) (err error) {
 	const (
 		idVer     = 0
 		idNmethod = 1
@@ -64,7 +64,7 @@ func handshake(conn net.Conn,first byte ) (err error) {
 	if n, err = io.ReadAtLeast(conn, buf[1:], idNmethod+1); err != nil {
 		return
 	}
-	n ++
+	n++
 	//if buf[idVer] != socksVer5 {
 	//	return errVer
 	//}
@@ -145,13 +145,13 @@ func socks5Connect(conn net.Conn) (host string, hostType int, err error) {
 	//raw := buf[idType:reqLen]
 	switch hostType {
 	case typeIPv4:
-		host = net.IP(buf[idIP0: idIP0+net.IPv4len]).String()
+		host = net.IP(buf[idIP0 : idIP0+net.IPv4len]).String()
 	case typeIPv6:
-		host = net.IP(buf[idIP0: idIP0+net.IPv6len]).String()
+		host = net.IP(buf[idIP0 : idIP0+net.IPv6len]).String()
 	case typeDm:
-		host = string(buf[idDm0: idDm0+buf[idDmLen]])
+		host = string(buf[idDm0 : idDm0+buf[idDmLen]])
 	}
-	port := binary.BigEndian.Uint16(buf[reqLen-2: reqLen])
+	port := binary.BigEndian.Uint16(buf[reqLen-2 : reqLen])
 	host = net.JoinHostPort(host, strconv.Itoa(int(port)))
 	_, err = conn.Write([]byte{0x05, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x08, 0x43})
 	return

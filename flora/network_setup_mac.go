@@ -3,9 +3,9 @@ package flora
 import (
 	"bytes"
 	"log"
+	"net"
 	"os/exec"
 	"strings"
-	"net"
 )
 
 type darwin struct {

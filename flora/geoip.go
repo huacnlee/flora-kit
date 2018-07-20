@@ -1,10 +1,11 @@
 package flora
 
 import (
-	"github.com/oschwald/geoip2-golang"
 	"log"
 	"net"
 	"strings"
+
+	"github.com/oschwald/geoip2-golang"
 )
 
 var geoDB *geoip2.Reader
