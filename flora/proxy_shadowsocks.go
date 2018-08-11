@@ -1,7 +1,7 @@
 package flora
 
 import (
-	ss "github.com/shadowsocks/shadowsocks-go/shadowsocks"
+	ss "shadowsocks-go/shadowsocks"
 	"net"
 	"sync"
 )

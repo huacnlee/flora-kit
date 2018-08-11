@@ -2,7 +2,7 @@ package flora
 
 import (
 	"encoding/binary"
-	ss "github.com/shadowsocks/shadowsocks-go/shadowsocks"
+	ss "shadowsocks-go/shadowsocks"
 	"io"
 	"log"
 	"net"

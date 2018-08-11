@@ -48,6 +48,14 @@ $ ./flora
 flora.exe
 ```
 
+#### 开发说明
+由于 go get 经常下不了包，我把依赖的几个库用vendor的方式加入工程
+开发的时候需要执行下面的操作:
+```
+git submodule init
+git submodule update
+```
+
 ## License
 
 Apache License 2.0

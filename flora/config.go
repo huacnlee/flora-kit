@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-ini/ini"
-	ss "github.com/shadowsocks/shadowsocks-go/shadowsocks"
+	"ini"
+	ss "shadowsocks-go/shadowsocks"
 )
 
 const (

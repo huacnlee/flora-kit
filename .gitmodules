@@ -1,0 +1,9 @@
+[submodule "vendor/shadowsocks-go"]
+	path = vendor/shadowsocks-go
+	url = https://github.com/shadowsocks/shadowsocks-go.git
+[submodule "vendor/ini"]
+	path = vendor/ini
+	url = https://github.com/go-ini/ini.git
+[submodule "vendor/geoip2-golang"]
+	path = vendor/geoip2-golang
+	url = https://github.com/oschwald/geoip2-golang.git
