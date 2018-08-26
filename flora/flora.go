@@ -59,6 +59,8 @@ var (
 	errCmd           = errors.New("socks command not supported")
 	errReject        = errors.New("socks reject this request")
 	errSupported     = errors.New("proxy type not supported")
+	errConnect       = errors.New("connection remote shadowsocks fail")
+	errProxy         = errors.New("error proxy action")
 )
 
 var proxyConfig *ProxyConfig
@@ -114,6 +116,7 @@ func handleConnection(conn net.Conn) {
 	}
 	remote, err := matchRuleAndCreateConn(conn, host, hostType, rawData)
 	if nil != err {
+		log.Printf("%v", err)
 		return
 	}
 	//create remote connect
@@ -214,14 +217,16 @@ func matchBypass(addr string) *Rule {
 }
 
 func createRemoteConn(raw []byte, rule *Rule, host string) (net.Conn, error) {
-	server := proxyConfig.GetProxyServer(rule.Action)
-	conn, err := server.DialWithRawAddr(raw, host)
-	if nil != err {
-		log.Printf("[%s]->[%s] 💊 [%s]", rule.Match, rule.Action, host)
-		server.AddFail()
-	} else {
-		log.Printf("[%s]->[%s] ✅ [%s]", rule.Match, rule.Action, host)
-		server.ResetFailCount()
+	if server, err := proxyConfig.GetProxyServer(rule.Action); nil == err {
+		conn, err := server.DialWithRawAddr(raw, host)
+		if nil != err {
+			log.Printf("[%s]->[%s] 💊 [%s]", rule.Match, rule.Action, host)
+			server.AddFail()
+		} else {
+			log.Printf("[%s]->[%s] ✅ [%s]", rule.Match, rule.Action, host)
+			server.ResetFailCount()
+		}
+		return conn, err
 	}
-	return conn, err
+	return nil, errConnect
 }

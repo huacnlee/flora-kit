@@ -3,14 +3,14 @@ package flora
 import (
 	"fmt"
 	"log"
-	"math/rand"
-	"net"
+		"net"
 	"os"
 	"strconv"
 	"strings"
 
 	"ini"
 	ss "shadowsocks-go/shadowsocks"
+	"math/rand"
 )
 
 const (
@@ -149,29 +149,28 @@ func loadProxy(config *ProxyConfig) {
 
 }
 
-func (c *ProxyConfig) GetProxyServer(action string) ProxyServer {
+func (c *ProxyConfig) GetProxyServer(action string) (ProxyServer,error) {
 	const maxFailCnt = 30
-	var server ProxyServer
-	var ok bool
-	server, ok = c.proxyServer[action]
-	if !ok {
-		group, ok := c.proxyGroup[action]
-		if ok {
-			for _, s := range group.proxyServers {
-				eff := []ProxyServer{}
-				if s.FailCount() < maxFailCnt {
-					eff = append(eff, s)
-				}
-				l := len(eff)
-				if l > 0 {
-					return eff[rand.Intn(l)]
-				}
+
+	a := strings.ToLower(action)
+
+	if server, ok := c.proxyServer[a]; ok {
+		return server,nil
+	}
+
+	if group, ok := c.proxyGroup[a]; ok {
+		for _, s := range group.proxyServers {
+			eff := make([]ProxyServer,0)
+			if s.FailCount() < maxFailCnt {
+				eff = append(eff, s)
 			}
-		} else {
-			server = NewDirect()
+			l := len(eff)
+			if l > 0 {
+				return eff[rand.Intn(l)],nil
+			}
 		}
 	}
-	return server
+	return  nil,errProxy
 }
 
 //[Proxy Group] Section
